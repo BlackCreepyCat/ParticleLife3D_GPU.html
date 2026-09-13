@@ -112,6 +112,7 @@
       <button class="b" data-preset="cycle">Chase</button>
       <button class="b" data-preset="zero">Clear</button>
     </div>
+    <label class="check" style="margin-top:20px"><input type="checkbox" id="c-autorand" checked> Randomize matrix every 5 min</label>
   </section>
 
   <section>
@@ -190,6 +191,7 @@
       <output id="o-expo">1.40</output>
     </div>
     <label class="check"><input type="checkbox" id="c-glow" checked> Additive blending</label>
+    <label class="check"><input type="checkbox" id="c-grad" checked> Gradient dots (soft) instead of solid</label>
     <div class="btns">
       <button class="b" id="b-png">Save PNG</button>
     </div>
@@ -206,7 +208,7 @@
     <input type="file" id="f-load" accept=".json,application/json" hidden>
   </section>
 
-  <p class="fine">View: wheel zooms, middle click or Shift + drag pans, double-click reframes.<br>
+  <p class="fine">View: Shift + wheel zooms, middle click or Shift + drag pans, double-click reframes.<br>
   Keys: Space pauses, R respawns, M draws a new matrix, 0 reframes, H hides the panel.<br>
   A setup file can also be dropped straight onto the view.<br><br>
   Range drives the cost: the grid holds about <span id="perc">0</span> particles per cell, and each one examines nine of them. Past 60 per cell, lower the range rather than the population.</p>
@@ -240,7 +242,9 @@ const P = {
   trail: 0.0,
   bloom: 0.3,
   expo: 1.4,
-  glow: true
+  glow: true,
+  grad: true,
+  autorand: true
 };
 
 const matrix = new Float32Array(MAXT * MAXT);
@@ -287,6 +291,15 @@ function setMatrix(preset) {
   }
   drawMatrix();
   matDirty = true;
+}
+
+let autoRandTimer = null;
+function setAutoRand(on) {
+  P.autorand = on;
+  if (autoRandTimer) { clearInterval(autoRandTimer); autoRandTimer = null; }
+  if (on) {
+    autoRandTimer = setInterval(() => setMatrix("random"), 5 * 60 * 1000);
+  }
 }
 
 function cellColor(v) {
@@ -529,6 +542,7 @@ const PARTICLE_WGSL = `
 struct Cam {
   camX: f32, camY: f32, zoom: f32, worldH: f32,
   rx: f32, ry: f32, wrap: f32, alpha: f32,
+  grad: f32, pad0: f32, pad1: f32, pad2: f32,
 };
 
 @group(0) @binding(0) var<uniform> C: Cam;
@@ -570,7 +584,13 @@ fn vsParticle(@builtin(vertex_index) vi: u32,
 
 @fragment
 fn fsParticle(in: VOut) -> @location(0) vec4<f32> {
-  let a = 1.0 - smoothstep(0.45, 1.0, length(in.uv));
+  let d = length(in.uv);
+  var a: f32;
+  if (C.grad > 0.5) {
+    a = 1.0 - smoothstep(0.0, 1.0, d);
+  } else {
+    a = 1.0 - smoothstep(0.45, 1.0, d);
+  }
   return vec4<f32>(in.col * a, a);
 }
 
@@ -685,7 +705,7 @@ async function initGPU() {
   R.cursor       = device.createBuffer({ size: MAXCELLS * 4, usage: st });
   R.mat          = device.createBuffer({ size: MAXT * MAXT * 4, usage: st | cd });
   R.params       = device.createBuffer({ size: 96, usage: un | cd });
-  R.cam          = device.createBuffer({ size: 32, usage: un | cd });
+  R.cam          = device.createBuffer({ size: 48, usage: un | cd });
   R.palette      = device.createBuffer({ size: MAXT * 16, usage: st | cd });
   R.uDown = device.createBuffer({ size: 32, usage: un | cd });
   R.uBlurH = device.createBuffer({ size: 32, usage: un | cd });
@@ -737,7 +757,7 @@ async function initGPU() {
   const vsStage = GPUShaderStage.VERTEX;
   const pLayout = device.createBindGroupLayout({
     entries: [
-      { binding: 0, visibility: vsStage, buffer: { type: "uniform" } },
+      { binding: 0, visibility: vsStage | GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
       { binding: 1, visibility: vsStage, buffer: { type: "read-only-storage" } },
       { binding: 2, visibility: vsStage, buffer: { type: "read-only-storage" } },
       { binding: 3, visibility: vsStage, buffer: { type: "read-only-storage" } }
@@ -905,7 +925,7 @@ function uploadPalette() {
 /* ---------- parameters uploaded every frame ---------- */
 const parAB = new ArrayBuffer(96);
 const pf = new Float32Array(parAB), pu = new Uint32Array(parAB);
-const camAB = new Float32Array(8);
+const camAB = new Float32Array(12);
 const compAB = new Float32Array(8);
 let grid = { cols: 1, rows: 1, total: 1 };
 
@@ -953,6 +973,7 @@ function writeCam() {
   camAB[5] = 2 * P.size * dpr / H;
   camAB[6] = P.wrap ? 1 : 0;
   camAB[7] = 1;
+  camAB[8] = P.grad ? 1 : 0;
   device.queue.writeBuffer(R.cam, 0, camAB);
 }
 
@@ -1090,6 +1111,8 @@ bind("types", "types", v => String(Math.round(v)), () => {
 
 document.getElementById("c-wrap").addEventListener("change", e => { P.wrap = e.target.checked; clampCam(); });
 document.getElementById("c-glow").addEventListener("change", e => P.glow = e.target.checked);
+document.getElementById("c-grad").addEventListener("change", e => P.grad = e.target.checked);
+document.getElementById("c-autorand").addEventListener("change", e => setAutoRand(e.target.checked));
 document.querySelectorAll("[data-preset]").forEach(b =>
   b.addEventListener("click", () => setMatrix(b.dataset.preset)));
 
@@ -1118,6 +1141,8 @@ function syncUI() {
   }
   document.getElementById("c-wrap").checked = P.wrap;
   document.getElementById("c-glow").checked = P.glow;
+  document.getElementById("c-grad").checked = P.grad;
+  document.getElementById("c-autorand").checked = P.autorand;
 }
 
 function currentSetup() {
@@ -1168,6 +1193,7 @@ function applySetup(o) {
   drawMatrix();
   matDirty = true;
   clampCam();
+  setAutoRand(P.autorand);
   if (device) uploadPalette();
 }
 
@@ -1181,10 +1207,30 @@ function flash(btn, msg) {
 const loadBtn = document.getElementById("b-load");
 const fileIn = document.getElementById("f-load");
 
-document.getElementById("b-save").addEventListener("click", e => {
-  const blob = new Blob([JSON.stringify(currentSetup(), null, 2)], { type: "application/json" });
+document.getElementById("b-save").addEventListener("click", async e => {
+  const data = JSON.stringify(currentSetup(), null, 2);
+  const name = "particle-life-" + new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-") + ".json";
+
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: name,
+        types: [{ description: "JSON setup", accept: { "application/json": [".json"] } }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(data);
+      await writable.close();
+      flash(e.target, "Saved");
+    } catch (err) {
+      if (err.name !== "AbortError") { flash(e.target, "Save failed"); console.warn("Save failed:", err); }
+    }
+    return;
+  }
+
+  // fallback for browsers without the File System Access API: silent download
+  const blob = new Blob([data], { type: "application/json" });
   const a = document.createElement("a");
-  a.download = "particle-life-" + new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-") + ".json";
+  a.download = name;
   a.href = URL.createObjectURL(blob);
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
@@ -1202,7 +1248,21 @@ async function loadFile(f) {
   }
 }
 
-loadBtn.addEventListener("click", () => fileIn.click());
+loadBtn.addEventListener("click", async () => {
+  if (window.showOpenFilePicker) {
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{ description: "JSON setup", accept: { "application/json": [".json"] } }],
+        multiple: false
+      });
+      await loadFile(await handle.getFile());
+    } catch (err) {
+      if (err.name !== "AbortError") { flash(loadBtn, "Invalid file"); console.warn("Load failed:", err); }
+    }
+    return;
+  }
+  fileIn.click();
+});
 fileIn.addEventListener("change", async e => {
   const f = e.target.files[0];
   if (f) await loadFile(f);
@@ -1276,6 +1336,7 @@ function screenPx(e) {
   return { px: (e.clientX - r.left) * W / r.width, py: (e.clientY - r.top) * H / r.height };
 }
 cv.addEventListener("wheel", e => {
+  if (!e.shiftKey) return;
   e.preventDefault();
   const { px, py } = screenPx(e);
   const s0 = W * cam.z;
@@ -1344,6 +1405,7 @@ function showFail(msg) {
 
 (async function start() {
   if (!loadHash()) setMatrix("random");
+  setAutoRand(P.autorand);
   drawMatrix();
   try {
     await initGPU();
