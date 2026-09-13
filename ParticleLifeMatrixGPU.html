@@ -20,7 +20,7 @@
   html,body{height:100%;margin:0}
   body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;overflow:hidden;display:flex}
   #stage{position:relative;flex:1;min-width:0}
-  canvas{display:block;width:100%;height:100%;cursor:crosshair}
+  canvas{display:block;width:100%;height:100%;cursor:default}
 
   #hud{position:absolute;left:14px;top:12px;font-family:var(--mono);font-size:11px;
        color:var(--muted);letter-spacing:.04em;pointer-events:none;text-shadow:0 1px 3px #000}
@@ -28,7 +28,7 @@
 
   #toggle{position:absolute;right:14px;top:12px;background:rgba(16,19,25,.85);
           border:1px solid var(--line);color:var(--muted);border-radius:4px;padding:6px 10px;
-          font-family:var(--sans);font-size:12px;cursor:pointer}
+          font-family:var(--sans);font-size:12px;cursor:pointer;z-index:20}
   #toggle:hover{color:var(--text);border-color:#39414f}
 
   #fail{position:absolute;inset:0;display:none;flex-direction:column;justify-content:center;
@@ -36,9 +36,13 @@
   #fail h2{font-size:16px;margin:0}
   #fail p{color:var(--muted);max-width:44ch;line-height:1.6;margin:0}
 
-  aside{width:318px;flex:none;background:var(--panel);border-left:1px solid var(--line);
-        overflow-y:auto;overscroll-behavior:contain;padding:16px 16px 40px}
-  aside.hidden{display:none}
+  aside{position:absolute;top:0;right:0;height:100%;width:318px;z-index:10;
+        background:var(--panel);border-left:1px solid var(--line);
+        box-shadow:-18px 0 40px -14px rgba(0,0,0,.6);
+        overflow-y:auto;overscroll-behavior:contain;padding:16px 16px 40px;
+        transform:translateX(0);opacity:1;
+        transition:transform .28s cubic-bezier(.2,.7,.2,1), opacity .28s ease}
+  aside.hidden{transform:translateX(100%);opacity:0;pointer-events:none}
   aside::-webkit-scrollbar{width:9px}
   aside::-webkit-scrollbar-thumb{background:#242a35;border-radius:9px}
 
@@ -108,6 +112,7 @@
       <button class="b" data-preset="cycle">Chase</button>
       <button class="b" data-preset="zero">Clear</button>
     </div>
+    <label class="check" style="margin-top:20px"><input type="checkbox" id="c-autorand" checked> Randomize matrix every 5 min, 20 s cross-fade</label>
   </section>
 
   <section>
@@ -152,8 +157,8 @@
     </div>
     <div class="row">
       <label for="s-dt">Time step</label>
-      <input type="range" id="s-dt" min="0.002" max="0.03" step="0.001" value="0.010">
-      <output id="o-dt">0.010</output>
+      <input type="range" id="s-dt" min="0.002" max="0.03" step="0.001" value="0.006">
+      <output id="o-dt">0.006</output>
     </div>
     <div class="row">
       <label for="s-sub">Substeps</label>
@@ -164,11 +169,69 @@
   </section>
 
   <section>
+    <h2>Mouse</h2>
+    <p class="hint">Hold the left button to pull the particles in, the right button to push them away. Shift or the middle button still pans the view.</p>
+    <div class="row">
+      <label for="s-mforce">Strength</label>
+      <input type="range" id="s-mforce" min="0" max="20" step="0.5" value="6">
+      <output id="o-mforce">6.0</output>
+    </div>
+    <div class="row">
+      <label for="s-mrad">Radius</label>
+      <input type="range" id="s-mrad" min="0.02" max="1" step="0.01" value="0.30">
+      <output id="o-mrad">0.30</output>
+    </div>
+    <label class="check"><input type="checkbox" id="c-mouse" checked> Mouse interaction enabled</label>
+  </section>
+
+  <section>
+    <h2>Palette</h2>
+    <p class="hint">Hues are built in OkLCh, so every color carries the same perceived lightness and no species visually crushes the others.</p>
+    <div class="row">
+      <label for="s-hue">Hue</label>
+      <input type="range" id="s-hue" min="0" max="360" step="1" value="8">
+      <output id="o-hue">8</output>
+    </div>
+    <div class="row">
+      <label for="s-spread">Spread</label>
+      <input type="range" id="s-spread" min="-360" max="360" step="5" value="360">
+      <output id="o-spread">360</output>
+    </div>
+    <div class="row">
+      <label for="s-chroma">Chroma</label>
+      <input type="range" id="s-chroma" min="0" max="0.37" step="0.005" value="0.14">
+      <output id="o-chroma">0.140</output>
+    </div>
+    <div class="row">
+      <label for="s-light">Lightness</label>
+      <input type="range" id="s-light" min="0.3" max="0.95" step="0.01" value="0.72">
+      <output id="o-light">0.72</output>
+    </div>
+    <div class="row">
+      <label for="s-jitter">Jitter</label>
+      <input type="range" id="s-jitter" min="0" max="0.5" step="0.01" value="0.12">
+      <output id="o-jitter">0.12</output>
+    </div>
+    <div class="btns">
+      <button class="b" data-scheme="rainbow">Rainbow</button>
+      <button class="b" data-scheme="ember">Ember</button>
+      <button class="b" data-scheme="glacier">Glacier</button>
+      <button class="b" data-scheme="sodium">Sodium</button>
+      <button class="b" data-scheme="biolum">Biolum</button>
+    </div>
+  </section>
+
+  <section>
     <h2>Rendering</h2>
     <div class="row">
       <label for="s-size">Size</label>
       <input type="range" id="s-size" min="0.4" max="6" step="0.1" value="2.0">
       <output id="o-size">2.0</output>
+    </div>
+    <div class="row">
+      <label for="s-stretch">Motion blur</label>
+      <input type="range" id="s-stretch" min="0" max="1" step="0.01" value="0">
+      <output id="o-stretch">0.00</output>
     </div>
     <div class="row">
       <label for="s-trail">Trails</label>
@@ -185,7 +248,13 @@
       <input type="range" id="s-expo" min="0.3" max="4" step="0.05" value="1.4">
       <output id="o-expo">1.40</output>
     </div>
+    <div class="row">
+      <label for="s-sat">Saturation</label>
+      <input type="range" id="s-sat" min="0.4" max="2" step="0.05" value="1.15">
+      <output id="o-sat">1.15</output>
+    </div>
     <label class="check"><input type="checkbox" id="c-glow" checked> Additive blending</label>
+    <label class="check"><input type="checkbox" id="c-grad" checked> Gradient dots (soft) instead of solid</label>
     <div class="btns">
       <button class="b" id="b-png">Save PNG</button>
     </div>
@@ -202,8 +271,9 @@
     <input type="file" id="f-load" accept=".json,application/json" hidden>
   </section>
 
-  <p class="fine">Mouse: hold left click to attract, right click to repel.<br>
-  View: wheel zooms, middle click or Shift + drag pans, double-click reframes.<br>
+  <p class="fine">Mouse: left click attracts, right click repels.<br>
+  View: Shift + wheel zooms, middle click or Shift + drag pans, double-click reframes.<br>
+  Under Lively the settings come from LivelyProperties.json, and playback follows the wallpaper pause.<br>
   Keys: Space pauses, R respawns, M draws a new matrix, 0 reframes, H hides the panel.<br>
   A setup file can also be dropped straight onto the view.<br><br>
   Range drives the cost: the grid holds about <span id="perc">0</span> particles per cell, and each one examines nine of them. Past 60 per cell, lower the range rather than the population.</p>
@@ -220,7 +290,8 @@
 ================================================================== */
 
 const MAXT = 10;
-const MAXCELLS = 262144;
+const MAXCELLS = 262144;          // doit rester egal a SUMBASE - 1 dans le WGSL
+const SCANBLOCK = 1024;           // cellules par bloc de scan
 let MAXN = 500000;
 
 const P = {
@@ -230,45 +301,113 @@ const P = {
   force: 12,
   beta: 0.30,
   friction: 0.04,
-  dt: 0.010,
+  dt: 0.006,
   sub: 1,
   wrap: true,
   size: 2.0,
   trail: 0.0,
   bloom: 0.3,
   expo: 1.4,
-  glow: true
+  glow: true,
+  grad: true,
+  stretch: 0.0,
+  mouseOn: true,
+  mforce: 6,
+  mrad: 0.30,
+  hue: 8,
+  spread: 360,
+  chroma: 0.14,
+  light: 0.72,
+  jitter: 0.12,
+  sat: 1.15,
+  autorand: true
 };
 
-const matrix = new Float32Array(MAXT * MAXT);
+const mouse = { x: 0, y: 0, down: 0 };
+const matrix = new Float32Array(MAXT * MAXT);   // cible, editee par l'interface
+const matGpu = new Float32Array(MAXT * MAXT);   // etat reellement envoye au GPU
+const blend = { t: 1, dur: 1, from: new Float32Array(MAXT * MAXT) };
 let worldH = 0.6;
 let paused = false;
-const mouse = { x: 0, y: 0, down: 0 };
 const cam = { x: 0.5, y: 0.3, z: 1 };
 
 const cv = document.getElementById("cv");
 let W = 1, H = 1, dpr = 1;
 
-/* ---------- colors ---------- */
-function hsl2rgb(h, s, l) {
-  const k = n => (n + h / 30) % 12;
-  const a = s * Math.min(l, 1 - l);
-  const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
-  return [f(0), f(8), f(4)];
+/* ---------- colors ----------
+   Les teintes sont construites en OkLCh : a L et C constants toutes les
+   couleurs portent la meme clarte percue, contrairement au HSL ou le vert
+   ecrase le bleu. Ce qui part au GPU est en lineaire, pas en sRGB : le
+   melange additif et le tone mapping travaillent sur de la lumiere, donc
+   les recouvrements ne delavent plus. L'encodage sRGB est fait une seule
+   fois, tout a la fin, dans fsComposite.
+------------------------------------------------------------------ */
+
+function oklchToLinear(L, C, hDeg) {
+  const h = hDeg * Math.PI / 180;
+  const a = C * Math.cos(h), b = C * Math.sin(h);
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+  const l = l_ * l_ * l_, m = m_ * m_ * m_, q = s_ * s_ * s_;
+  return [
+     4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * q,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * q,
+    -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * q
+  ];
 }
+
+// hors gamut on ne coupe pas les canaux, ce qui tordrait la teinte :
+// on reduit la chroma par dichotomie jusqu'a rentrer.
+function oklchFit(L, C, h) {
+  const fits = c => {
+    const v = oklchToLinear(L, c, h);
+    return v[0] >= -1e-4 && v[1] >= -1e-4 && v[2] >= -1e-4 &&
+           v[0] <= 1.0001 && v[1] <= 1.0001 && v[2] <= 1.0001;
+  };
+  let c = C;
+  if (!fits(c)) {
+    let lo = 0, hi = C;
+    for (let k = 0; k < 18; k++) {
+      const mid = (lo + hi) * 0.5;
+      if (fits(mid)) lo = mid; else hi = mid;
+    }
+    c = lo;
+  }
+  return oklchToLinear(L, c, h).map(v => Math.min(1, Math.max(0, v)));
+}
+
+function srgbEncode(x) {
+  x = Math.min(1, Math.max(0, x));
+  return x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055;
+}
+
+const SCHEMES = {
+  rainbow: { hue: 8,   spread: 360,  chroma: 0.14, light: 0.72 },
+  ember:   { hue: 35,  spread: 75,   chroma: 0.17, light: 0.66 },
+  glacier: { hue: 215, spread: -110, chroma: 0.12, light: 0.76 },
+  sodium:  { hue: 50,  spread: 30,   chroma: 0.16, light: 0.70 },
+  biolum:  { hue: 160, spread: 130,  chroma: 0.15, light: 0.74 }
+};
+
 let colors = [], rgb = [];
 function palette(n) {
   colors = []; rgb = [];
   for (let i = 0; i < n; i++) {
-    const h = (360 * i / n + 8) % 360;
-    colors.push(`hsl(${Math.round(h)} 78% 62%)`);
-    rgb.push(hsl2rgb(h, 0.78, 0.62));
+    const h = P.hue + P.spread * (n > 1 ? i / n : 0);
+    const lin = oklchFit(P.light, P.chroma, ((h % 360) + 360) % 360);
+    rgb.push(lin);
+    const e = lin.map(v => Math.round(srgbEncode(v) * 255));
+    colors.push(`rgb(${e[0]} ${e[1]} ${e[2]})`);
   }
 }
 palette(P.types);
 
 /* ---------- matrix ---------- */
-function setMatrix(preset) {
+// fadeMs > 0 : la matrice courante glisse vers la nouvelle au lieu de
+// basculer d'un coup, ce qui evite de casser brutalement les structures
+// en place lors du tirage automatique.
+function setMatrix(preset, fadeMs) {
   const n = P.types;
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
@@ -284,7 +423,23 @@ function setMatrix(preset) {
     }
   }
   drawMatrix();
+  if (fadeMs > 0) {
+    blend.from.set(matGpu);
+    blend.t = 0;
+    blend.dur = fadeMs;
+  } else {
+    blend.t = 1;
+  }
   matDirty = true;
+}
+
+let autoRandTimer = null;
+function setAutoRand(on) {
+  P.autorand = on;
+  if (autoRandTimer) { clearInterval(autoRandTimer); autoRandTimer = null; }
+  if (on) {
+    autoRandTimer = setInterval(() => setMatrix("random", 20000), 5 * 60 * 1000);
+  }
 }
 
 function cellColor(v) {
@@ -316,6 +471,15 @@ function drawMatrix() {
     }
   }
 }
+// la table entiere n'a pas besoin d'etre reconstruite quand seule la
+// palette change : on ne retouche que les pastilles.
+function repaintDots() {
+  const ds = table.querySelectorAll(".dot");
+  const n = P.types;
+  for (let k = 0; k < ds.length; k++)
+    ds[k].style.background = colors[k < n ? k : k - n];
+}
+
 function paintCell(el) {
   const v = matrix[el.dataset.i * MAXT + (+el.dataset.j)];
   el.style.background = cellColor(v);
@@ -337,6 +501,7 @@ table.addEventListener("pointermove", e => {
   v = Math.max(-1, Math.min(1, Math.round(v * 100) / 100));
   matrix[drag.el.dataset.i * MAXT + (+drag.el.dataset.j)] = v;
   paintCell(drag.el);
+  blend.t = 1;            // une edition manuelle coupe court au fondu
   matDirty = true;
 });
 addEventListener("pointerup", () => { drag = null; });
@@ -357,18 +522,25 @@ struct Params {
   cellW: f32, cellH: f32, worldH: f32, mouseX: f32,
   mouseY: f32, mouseR: f32, mouseF: f32, pad0: f32,
   count: u32, cols: u32, rows: u32, cellTotal: u32,
-  wrap: u32, pad1: u32, pad2: u32, pad3: u32,
+  wrap: u32, blocks: u32, pad2: u32, pad3: u32,
 };
 
 @group(0) @binding(0) var<uniform> P: Params;
 @group(0) @binding(1) var<storage, read_write> posVel: array<vec4<f32>>;
-@group(0) @binding(2) var<storage, read_write> posVelSorted: array<vec4<f32>>;
+@group(0) @binding(2) var<storage, read_write> sortedPK: array<vec4<f32>>;
 @group(0) @binding(3) var<storage, read_write> kindIn: array<u32>;
-@group(0) @binding(4) var<storage, read_write> kindSorted: array<u32>;
+@group(0) @binding(4) var<storage, read_write> sortedVel: array<vec2<f32>>;
 @group(0) @binding(5) var<storage, read_write> counts: array<atomic<u32>>;
 @group(0) @binding(6) var<storage, read_write> cellStart: array<u32>;
 @group(0) @binding(7) var<storage, read_write> cursor: array<atomic<u32>>;
 @group(0) @binding(8) var<storage, read> mat: array<f32>;
+
+// un bloc de scan couvre 1024 cellules, 256 threads x 4 cellules.
+// les totaux de bloc vivent dans la queue de cellStart, apres la table
+// des cellules, ce qui evite un neuvieme storage buffer (la limite par
+// defaut d'un shader stage est justement de huit).
+const BLOCK: u32 = 1024u;
+const SUMBASE: u32 = 262145u;
 
 fn cellOf(p: vec2<f32>) -> u32 {
   let gx = clamp(i32(floor(p.x / P.cellW)), 0, i32(P.cols) - 1);
@@ -393,19 +565,7 @@ fn countCells(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 var<workgroup> part: array<u32, 256>;
 
-@compute @workgroup_size(256)
-fn scanCells(@builtin(local_invocation_id) lid: vec3<u32>) {
-  let t = lid.x;
-  let C = P.cellTotal;
-  let chunk = (C + 255u) / 256u;
-  let b = min(t * chunk, C);
-  let e = min(b + chunk, C);
-
-  var s = 0u;
-  for (var i = b; i < e; i = i + 1u) { s = s + atomicLoad(&counts[i]); }
-  part[t] = s;
-  workgroupBarrier();
-
+fn scanShared(t: u32) {
   for (var d = 1u; d < 256u; d = d * 2u) {
     var v = 0u;
     if (t >= d) { v = part[t - d]; }
@@ -413,6 +573,23 @@ fn scanCells(@builtin(local_invocation_id) lid: vec3<u32>) {
     part[t] = part[t] + v;
     workgroupBarrier();
   }
+}
+
+// passe 1 : scan exclusif a l'interieur de chaque bloc de 1024 cellules,
+// le total du bloc part dans la queue du buffer.
+@compute @workgroup_size(256)
+fn scanBlocks(@builtin(local_invocation_id) lid: vec3<u32>,
+              @builtin(workgroup_id) wid: vec3<u32>) {
+  let t = lid.x;
+  let C = P.cellTotal;
+  let b = min(wid.x * BLOCK + t * 4u, C);
+  let e = min(b + 4u, C);
+
+  var s = 0u;
+  for (var i = b; i < e; i = i + 1u) { s = s + atomicLoad(&counts[i]); }
+  part[t] = s;
+  workgroupBarrier();
+  scanShared(t);
 
   var acc = 0u;
   if (t > 0u) { acc = part[t - 1u]; }
@@ -420,7 +597,39 @@ fn scanCells(@builtin(local_invocation_id) lid: vec3<u32>) {
     cellStart[i] = acc;
     acc = acc + atomicLoad(&counts[i]);
   }
-  if (t == 255u) { cellStart[C] = part[255u]; }
+  if (t == 255u) { cellStart[SUMBASE + wid.x] = part[255u]; }
+}
+
+// passe 2 : scan des totaux de bloc, 256 blocs au maximum donc un seul
+// workgroup suffit et le travail est negligeable.
+@compute @workgroup_size(256)
+fn scanSums(@builtin(local_invocation_id) lid: vec3<u32>) {
+  let t = lid.x;
+  var s = 0u;
+  if (t < P.blocks) { s = cellStart[SUMBASE + t]; }
+  part[t] = s;
+  workgroupBarrier();
+  scanShared(t);
+
+  var acc = 0u;
+  if (t > 0u) { acc = part[t - 1u]; }
+  workgroupBarrier();
+  if (t < P.blocks) { cellStart[SUMBASE + t] = acc; }
+  if (t + 1u == P.blocks) { cellStart[P.cellTotal] = part[t]; }
+}
+
+// passe 3 : report de l'offset de bloc sur chaque cellule.
+@compute @workgroup_size(256)
+fn addOffsets(@builtin(local_invocation_id) lid: vec3<u32>,
+              @builtin(workgroup_id) wid: vec3<u32>) {
+  let off = cellStart[SUMBASE + wid.x];
+  if (off == 0u) { return; }
+  let C = P.cellTotal;
+  let b = wid.x * BLOCK + lid.x * 4u;
+  for (var i = 0u; i < 4u; i = i + 1u) {
+    let k = b + i;
+    if (k < C) { cellStart[k] = cellStart[k] + off; }
+  }
 }
 
 @compute @workgroup_size(64)
@@ -430,34 +639,37 @@ fn scatter(@builtin(global_invocation_id) gid: vec3<u32>) {
   let pv = posVel[i];
   let c = cellOf(pv.xy);
   let dst = cellStart[c] + atomicAdd(&cursor[c], 1u);
-  posVelSorted[dst] = pv;
-  kindSorted[dst] = kindIn[i];
+  // position et type dans le meme vec4 : la boucle chaude ne touche
+  // plus qu'un seul buffer, la vitesse n'est relue que pour soi-meme.
+  sortedPK[dst] = vec4<f32>(pv.xy, f32(kindIn[i]), 0.0);
+  sortedVel[dst] = pv.zw;
 }
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(256)
 fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = gid.x;
   if (i >= P.count) { return; }
 
-  let pv = posVelSorted[i];
-  let p = pv.xy;
-  let ti = kindSorted[i];
+  let me = sortedPK[i];
+  let p = me.xy;
+  let ti = u32(me.z);
   let world = vec2<f32>(1.0, P.worldH);
   let wrapOn = P.wrap == 1u;
   var f = vec2<f32>(0.0, 0.0);
 
   let cgx = clamp(i32(floor(p.x / P.cellW)), 0, i32(P.cols) - 1);
   let cgy = clamp(i32(floor(p.y / P.cellH)), 0, i32(P.rows) - 1);
+  let row = ti * 10u;
 
   for (var dy = -1; dy <= 1; dy = dy + 1) {
     var gy = cgy + dy;
     var oy = 0.0;
     if (gy < 0) {
-      if (!wrapOn || P.rows < 3u) { continue; }
+      if (!wrapOn) { continue; }
       gy = i32(P.rows) - 1;
       oy = -P.worldH;
     } else if (gy >= i32(P.rows)) {
-      if (!wrapOn || P.rows < 3u) { continue; }
+      if (!wrapOn) { continue; }
       gy = 0;
       oy = P.worldH;
     }
@@ -466,11 +678,11 @@ fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
       var gx = cgx + dx;
       var ox = 0.0;
       if (gx < 0) {
-        if (!wrapOn || P.cols < 3u) { continue; }
+        if (!wrapOn) { continue; }
         gx = i32(P.cols) - 1;
         ox = -1.0;
       } else if (gx >= i32(P.cols)) {
-        if (!wrapOn || P.cols < 3u) { continue; }
+        if (!wrapOn) { continue; }
         gx = 0;
         ox = 1.0;
       }
@@ -481,12 +693,13 @@ fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
 
       for (var k = cellStart[c]; k < e; k = k + 1u) {
         if (k == i) { continue; }
-        let d = posVelSorted[k].xy + off - p;
+        let nb = sortedPK[k];
+        let d = nb.xy + off - p;
         let d2 = dot(d, d);
         if (d2 >= P.rMax2 || d2 <= 0.0) { continue; }
         let dist = sqrt(d2);
         let r = dist * P.invRMax;
-        let a = mat[ti * 10u + kindSorted[k]];
+        let a = mat[row + u32(nb.z)];
         var mag = a * (1.0 - abs(2.0 * r - 1.0 - P.beta) * P.invTail);
         if (r < P.beta) { mag = r * P.invBeta - 1.0; }
         f = f + d * (mag / dist);
@@ -506,7 +719,7 @@ fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
   }
 
-  var v = pv.zw * P.damp + f * P.dt;
+  var v = sortedVel[i] * P.damp + f * P.dt;
   var q = p + v * P.dt;
 
   if (wrapOn) {
@@ -527,7 +740,16 @@ const PARTICLE_WGSL = `
 struct Cam {
   camX: f32, camY: f32, zoom: f32, worldH: f32,
   rx: f32, ry: f32, wrap: f32, alpha: f32,
+  grad: f32, stretch: f32, jitter: f32, pad2: f32,
 };
+
+// hash entier -> [0,1), pour donner a chaque particule sa propre nuance
+fn hash11(n: u32) -> f32 {
+  var x = n * 747796405u + 2891336453u;
+  x = ((x >> ((x >> 28u) + 4u)) ^ x) * 277803737u;
+  x = (x >> 22u) ^ x;
+  return f32(x) / 4294967295.0;
+}
 
 @group(0) @binding(0) var<uniform> C: Cam;
 @group(0) @binding(1) var<storage, read> posVel: array<vec4<f32>>;
@@ -548,7 +770,8 @@ fn vsParticle(@builtin(vertex_index) vi: u32,
     vec2<f32>(-1.0,  1.0), vec2<f32>(1.0,  1.0));
 
   let q = corner[vi];
-  var p = posVel[ii].xy;
+  let pv = posVel[ii];
+  var p = pv.xy;
 
   if (C.wrap > 0.5) {
     p.x = p.x - round(p.x - C.camX);
@@ -559,16 +782,45 @@ fn vsParticle(@builtin(vertex_index) vi: u32,
     (p.x - C.camX) * C.zoom * 2.0,
     -(p.y - C.camY) * C.zoom * 2.0 / C.worldH);
 
+  // flou de mouvement : le quad s'allonge et s'oriente le long de la
+  // vitesse exprimee en espace ecran, le disque reste rond en local.
+  var e = q;
+  if (C.stretch > 0.0) {
+    let vs = vec2<f32>(pv.z, -pv.w / C.worldH);
+    let sp = length(vs);
+    if (sp > 1e-7) {
+      let dn = vs / sp;
+      let k = clamp(1.0 + C.stretch * sp * C.zoom, 1.0, 8.0);
+      let a = vec2<f32>(q.x * k, q.y);
+      e = vec2<f32>(a.x * dn.x - a.y * dn.y, a.x * dn.y + a.y * dn.x);
+    }
+  }
+
+  // sans ce bruit toutes les pastilles sont rigoureusement identiques et
+  // l'image prend un aspect plastique. On module la luminance franchement
+  // et la taille beaucoup plus discretement.
+  var lumScale = 1.0;
+  if (C.jitter > 0.0) {
+    lumScale = 1.0 + (hash11(ii) - 0.5) * 2.0 * C.jitter;
+    e = e * (1.0 + (hash11(ii ^ 0x9e3779b9u) - 0.5) * 0.4 * C.jitter);
+  }
+
   var o: VOut;
-  o.pos = vec4<f32>(ndc + q * vec2<f32>(C.rx, C.ry), 0.0, 1.0);
+  o.pos = vec4<f32>(ndc + e * vec2<f32>(C.rx, C.ry), 0.0, 1.0);
   o.uv = q;
-  o.col = palette[kindBuf[ii]].rgb * C.alpha;
+  o.col = palette[kindBuf[ii]].rgb * C.alpha * lumScale;
   return o;
 }
 
 @fragment
 fn fsParticle(in: VOut) -> @location(0) vec4<f32> {
-  let a = 1.0 - smoothstep(0.45, 1.0, length(in.uv));
+  let d = length(in.uv);
+  var a: f32;
+  if (C.grad > 0.5) {
+    a = 1.0 - smoothstep(0.0, 1.0, d);
+  } else {
+    a = 1.0 - smoothstep(0.45, 1.0, d);
+  }
   return vec4<f32>(in.col * a, a);
 }
 
@@ -588,8 +840,16 @@ fn fsFade() -> @location(0) vec4<f32> {
 const POST_WGSL = `
 struct Post {
   texel: vec2<f32>, dir: vec2<f32>,
-  bloom: f32, exposure: f32, pad0: f32, pad1: f32,
+  bloom: f32, exposure: f32, spread: f32, sat: f32,
 };
+
+const LUMA = vec3<f32>(0.2126, 0.7152, 0.0722);
+
+fn srgbEncode(c: vec3<f32>) -> vec3<f32> {
+  let lo = c * 12.92;
+  let hi = 1.055 * pow(max(c, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.4)) - 0.055;
+  return select(hi, lo, c <= vec3<f32>(0.0031308));
+}
 
 @group(0) @binding(0) var<uniform> U: Post;
 @group(0) @binding(1) var samp: sampler;
@@ -629,7 +889,7 @@ fn fsBlur(in: FOut) -> @location(0) vec4<f32> {
   var w = array<f32, 5>(0.227027, 0.194595, 0.121622, 0.054054, 0.016216);
   var acc = textureSample(texA, samp, in.uv) * w[0];
   for (var i = 1u; i < 5u; i = i + 1u) {
-    let off = U.dir * U.texel * f32(i) * 1.7;
+    let off = U.dir * U.texel * f32(i) * U.spread;
     acc = acc + textureSample(texA, samp, in.uv + off) * w[i];
     acc = acc + textureSample(texA, samp, in.uv - off) * w[i];
   }
@@ -641,9 +901,29 @@ fn fsComposite(in: FOut) -> @location(0) vec4<f32> {
   let scene = textureSample(texA, samp, in.uv).rgb;
   let glow = textureSample(texB, samp, in.uv).rgb;
   let lit = scene + glow * U.bloom;
-  let mapped = vec3<f32>(1.0) - exp(-lit * U.exposure);
-  let bg = vec3<f32>(0.027, 0.031, 0.043);
-  return vec4<f32>(bg + mapped, 1.0);
+
+  // le tone mapping ne porte que sur la luminance : les rapports entre
+  // canaux sont conserves, donc les coeurs denses gardent leur teinte au
+  // lieu de virer tous au blanc.
+  let lum = max(dot(lit, LUMA), 1e-6);
+  var col = lit * ((1.0 - exp(-lum * U.exposure)) / lum);
+
+  // le mapping mange de la chroma, le curseur la remet
+  let g = dot(col, LUMA);
+  col = max(mix(vec3<f32>(g), col, U.sat), vec3<f32>(0.0));
+
+  // seuls les depassements sont ramenes vers le blanc, progressivement,
+  // ce qui evite la coupure par canal et le decalage de teinte qui va avec
+  let mx = max(col.r, max(col.g, col.b));
+  if (mx > 1.0) { col = mix(col, vec3<f32>(1.0), 1.0 - 1.0 / mx); }
+
+  let bg = vec3<f32>(0.00209, 0.00240, 0.00333);   // le fond, en lineaire
+  let outc = srgbEncode(min(col + bg, vec3<f32>(1.0)));
+
+  // bruit ordonne d'un demi LSB : sans lui le halo fait des bandes
+  // visibles sur un fond presque noir en sortie 8 bits.
+  let n = fract(sin(dot(in.pos.xy, vec2<f32>(12.9898, 78.233))) * 43758.5453);
+  return vec4<f32>(outc + (n - 0.5) / 255.0, 1.0);
 }
 `;
 
@@ -658,7 +938,11 @@ async function initGPU() {
   const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
   if (!adapter) throw new Error("No GPU adapter answered.");
   device = await adapter.requestDevice();
-  device.lost.then(info => showFail("The GPU device was lost: " + info.message));
+  const mine = device;
+  device.lost.then(info => {
+    if (info.reason === "destroyed") return;   // teardown volontaire
+    if (device === mine) onDeviceLost(info.message || "unknown reason");
+  });
 
   ctx = cv.getContext("webgpu");
   if (!ctx) throw new Error("The canvas refused the webgpu context.");
@@ -674,20 +958,23 @@ async function initGPU() {
   if (P.count > MAXN) { P.count = MAXN; sCount.value = String(MAXN); }
 
   const st = GPUBufferUsage.STORAGE, cd = GPUBufferUsage.COPY_DST, un = GPUBufferUsage.UNIFORM;
-  R.posVel       = device.createBuffer({ size: MAXN * 16, usage: st | cd });
-  R.posVelSorted = device.createBuffer({ size: MAXN * 16, usage: st });
-  R.kind         = device.createBuffer({ size: MAXN * 4,  usage: st | cd });
-  R.kindSorted   = device.createBuffer({ size: MAXN * 4,  usage: st });
-  R.counts       = device.createBuffer({ size: MAXCELLS * 4, usage: st });
-  R.cellStart    = device.createBuffer({ size: (MAXCELLS + 1) * 4, usage: st });
-  R.cursor       = device.createBuffer({ size: MAXCELLS * 4, usage: st });
+  R.posVel     = device.createBuffer({ size: MAXN * 16, usage: st | cd });
+  R.sortedPK   = device.createBuffer({ size: MAXN * 16, usage: st });
+  R.kind       = device.createBuffer({ size: MAXN * 4,  usage: st | cd });
+  R.sortedVel  = device.createBuffer({ size: MAXN * 8,  usage: st });
+  R.counts     = device.createBuffer({ size: MAXCELLS * 4, usage: st });
+  // la queue du buffer sert de zone de travail au scan hierarchique
+  R.cellStart  = device.createBuffer({ size: (MAXCELLS + 1 + 256) * 4, usage: st });
+  R.cursor     = device.createBuffer({ size: MAXCELLS * 4, usage: st });
   R.mat          = device.createBuffer({ size: MAXT * MAXT * 4, usage: st | cd });
   R.params       = device.createBuffer({ size: 96, usage: un | cd });
-  R.cam          = device.createBuffer({ size: 32, usage: un | cd });
+  R.cam          = device.createBuffer({ size: 48, usage: un | cd });
   R.palette      = device.createBuffer({ size: MAXT * 16, usage: st | cd });
   R.uDown = device.createBuffer({ size: 32, usage: un | cd });
   R.uBlurH = device.createBuffer({ size: 32, usage: un | cd });
   R.uBlurV = device.createBuffer({ size: 32, usage: un | cd });
+  R.uBlurH2 = device.createBuffer({ size: 32, usage: un | cd });
+  R.uBlurV2 = device.createBuffer({ size: 32, usage: un | cd });
   R.uComp = device.createBuffer({ size: 32, usage: un | cd });
 
   // explicit layouts: the five compute passes share a single bind group
@@ -712,7 +999,9 @@ async function initGPU() {
   });
   R.pClear = mk("clearCells");
   R.pCount = mk("countCells");
-  R.pScan  = mk("scanCells");
+  R.pScanA = mk("scanBlocks");
+  R.pScanB = mk("scanSums");
+  R.pScanC = mk("addOffsets");
   R.pScat  = mk("scatter");
   R.pForce = mk("forces");
 
@@ -721,9 +1010,9 @@ async function initGPU() {
     entries: [
       { binding: 0, resource: { buffer: R.params } },
       { binding: 1, resource: { buffer: R.posVel } },
-      { binding: 2, resource: { buffer: R.posVelSorted } },
+      { binding: 2, resource: { buffer: R.sortedPK } },
       { binding: 3, resource: { buffer: R.kind } },
-      { binding: 4, resource: { buffer: R.kindSorted } },
+      { binding: 4, resource: { buffer: R.sortedVel } },
       { binding: 5, resource: { buffer: R.counts } },
       { binding: 6, resource: { buffer: R.cellStart } },
       { binding: 7, resource: { buffer: R.cursor } },
@@ -735,7 +1024,7 @@ async function initGPU() {
   const vsStage = GPUShaderStage.VERTEX;
   const pLayout = device.createBindGroupLayout({
     entries: [
-      { binding: 0, visibility: vsStage, buffer: { type: "uniform" } },
+      { binding: 0, visibility: vsStage | GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
       { binding: 1, visibility: vsStage, buffer: { type: "read-only-storage" } },
       { binding: 2, visibility: vsStage, buffer: { type: "read-only-storage" } },
       { binding: 3, visibility: vsStage, buffer: { type: "read-only-storage" } }
@@ -836,22 +1125,37 @@ function makeTargets() {
       { binding: 3, resource: b }
     ]
   });
-  R.bgDown  = bg(R.uDown,  R.sceneV,  R.sceneV);
-  R.bgBlurH = bg(R.uBlurH, R.bloomAV, R.bloomAV);
-  R.bgBlurV = bg(R.uBlurV, R.bloomBV, R.bloomBV);
-  R.bgComp  = bg(R.uComp,  R.sceneV,  R.bloomAV);
+  R.bgDown   = bg(R.uDown,   R.sceneV,  R.sceneV);
+  R.bgBlurH  = bg(R.uBlurH,  R.bloomAV, R.bloomAV);
+  R.bgBlurV  = bg(R.uBlurV,  R.bloomBV, R.bloomBV);
+  R.bgBlurH2 = bg(R.uBlurH2, R.bloomAV, R.bloomAV);
+  R.bgBlurV2 = bg(R.uBlurV2, R.bloomBV, R.bloomBV);
+  R.bgComp   = bg(R.uComp,   R.sceneV,  R.bloomAV);
 
   const f = new Float32Array(8);
   f[0] = 1 / W; f[1] = 1 / H;               // texel of the scene
   device.queue.writeBuffer(R.uDown, 0, f);
-  f[0] = 1 / bw; f[1] = 1 / bh; f[2] = 1; f[3] = 0;
+  // deux paires de passes separables : un noyau serre puis un noyau
+  // large, ce qui donne un halo bien plus doux qu'un seul passage.
+  f[0] = 1 / bw; f[1] = 1 / bh; f[2] = 1; f[3] = 0; f[6] = 1.7;
   device.queue.writeBuffer(R.uBlurH, 0, f);
   f[2] = 0; f[3] = 1;
   device.queue.writeBuffer(R.uBlurV, 0, f);
+  f[2] = 1; f[3] = 0; f[6] = 4.5;
+  device.queue.writeBuffer(R.uBlurH2, 0, f);
+  f[2] = 0; f[3] = 1;
+  device.queue.writeBuffer(R.uBlurV2, 0, f);
 }
 
 /* ---------- resizing ---------- */
+// un ResizeObserver leve un drapeau, la boucle ne force plus un layout
+// a chaque frame juste pour lire la taille du canvas.
+let sizeDirty = true;
+new ResizeObserver(() => { sizeDirty = true; }).observe(cv);
+addEventListener("resize", () => { sizeDirty = true; });
+
 function resize() {
+  sizeDirty = false;
   dpr = Math.min(window.devicePixelRatio || 1, 2);
   const r = cv.getBoundingClientRect();
   const nw = Math.max(1, Math.round(r.width * dpr));
@@ -877,19 +1181,35 @@ function clampCam() {
 }
 
 /* ---------- population ---------- */
-let seedPos = null, seedKind = null;
-function spawn() {
+// on ne seme que ce qui est reellement utilise, et seulement la tranche
+// neuve quand le curseur monte : un respawn a 1000 particules ne coute
+// plus l'ecriture des 8 Mo du buffer complet.
+let seedPos = null, seedKind = null, seeded = 0;
+
+function ensureSeeded(n) {
   if (!device) return;
-  if (!seedPos) { seedPos = new Float32Array(MAXN * 4); seedKind = new Uint32Array(MAXN); }
-  for (let i = 0; i < MAXN; i++) {
+  n = Math.min(Math.round(n), MAXN);
+  if (n <= seeded) return;
+  const from = seeded, cnt = n - from;
+  if (!seedPos || seedPos.length < cnt * 4) {
+    seedPos = new Float32Array(cnt * 4);
+    seedKind = new Uint32Array(cnt);
+  }
+  for (let i = 0; i < cnt; i++) {
     seedPos[i * 4] = Math.random();
     seedPos[i * 4 + 1] = Math.random() * worldH;
     seedPos[i * 4 + 2] = 0;
     seedPos[i * 4 + 3] = 0;
     seedKind[i] = (Math.random() * P.types) | 0;
   }
-  device.queue.writeBuffer(R.posVel, 0, seedPos);
-  device.queue.writeBuffer(R.kind, 0, seedKind);
+  device.queue.writeBuffer(R.posVel, from * 16, seedPos, 0, cnt * 4);
+  device.queue.writeBuffer(R.kind, from * 4, seedKind, 0, cnt);
+  seeded = n;
+}
+
+function spawn() {
+  seeded = 0;
+  ensureSeeded(P.count);
 }
 
 function uploadPalette() {
@@ -903,31 +1223,36 @@ function uploadPalette() {
 /* ---------- parameters uploaded every frame ---------- */
 const parAB = new ArrayBuffer(96);
 const pf = new Float32Array(parAB), pu = new Uint32Array(parAB);
-const camAB = new Float32Array(8);
+const camAB = new Float32Array(12);
 const compAB = new Float32Array(8);
-let grid = { cols: 1, rows: 1, total: 1 };
+let grid = { cols: 3, rows: 3, total: 9, blocks: 1, rEff: 0.014 };
 
 function updateGrid() {
-  let cs = P.rMax;
-  let cols = Math.max(1, Math.floor(1 / cs));
-  let rows = Math.max(1, Math.floor(worldH / cs));
+  // la recherche de voisins visite 3x3 cellules : en dessous de trois
+  // cellules par axe, un monde toroidal compterait deux fois le meme
+  // voisin. On plafonne donc la portee plutot que la grille.
+  grid.rEff = Math.min(P.rMax, worldH / 3, 1 / 3);
+  let cs = grid.rEff;
+  let cols = Math.max(3, Math.floor(1 / cs));
+  let rows = Math.max(3, Math.floor(worldH / cs));
   while (cols * rows > MAXCELLS) {         // guard rail: larger cells
     cs *= 1.25;
-    cols = Math.max(1, Math.floor(1 / cs));
-    rows = Math.max(1, Math.floor(worldH / cs));
+    cols = Math.max(3, Math.floor(1 / cs));
+    rows = Math.max(3, Math.floor(worldH / cs));
   }
   grid.cols = cols; grid.rows = rows; grid.total = cols * rows;
+  grid.blocks = Math.ceil(grid.total / SCANBLOCK);
 }
 
 function writeParams(dt) {
   updateGrid();
   const damp = Math.pow(0.5, dt / P.friction);
-  pf[0] = P.rMax * P.rMax;
-  pf[1] = 1 / P.rMax;
+  pf[0] = grid.rEff * grid.rEff;
+  pf[1] = 1 / grid.rEff;
   pf[2] = P.beta;
   pf[3] = 1 / P.beta;
   pf[4] = 1 / (1 - P.beta);
-  pf[5] = P.rMax * P.force;
+  pf[5] = grid.rEff * P.force;
   pf[6] = dt;
   pf[7] = damp;
   pf[8] = 1 / grid.cols;
@@ -935,13 +1260,16 @@ function writeParams(dt) {
   pf[10] = worldH;
   pf[11] = mouse.x;
   pf[12] = mouse.y;
-  pf[13] = 0.3 / cam.z;
-  pf[14] = mouse.down === 1 ? 6 : (mouse.down === 2 ? -6 : 0);
+  pf[13] = P.mrad / cam.z;      // rayon constant a l'ecran quel que soit le zoom
+  pf[14] = (P.mouseOn && mouse.down)
+    ? (mouse.down === 1 ? P.mforce : -P.mforce)
+    : 0;
   pu[16] = P.count;
   pu[17] = grid.cols;
   pu[18] = grid.rows;
   pu[19] = grid.total;
   pu[20] = P.wrap ? 1 : 0;
+  pu[21] = grid.blocks;
   device.queue.writeBuffer(R.params, 0, parAB);
 }
 
@@ -951,20 +1279,31 @@ function writeCam() {
   camAB[5] = 2 * P.size * dpr / H;
   camAB[6] = P.wrap ? 1 : 0;
   camAB[7] = 1;
+  camAB[8] = P.grad ? 1 : 0;
+  camAB[9] = P.stretch * 60;   // le curseur 0..1 couvre une plage utile
+  camAB[10] = P.jitter;
   device.queue.writeBuffer(R.cam, 0, camAB);
 }
 
 /* ---------- main loop ---------- */
 let last = performance.now(), acc = 0, frames = 0, shot = false;
+let running = false, restarting = false, extPaused = false;
 const fpsEl = document.getElementById("fps");
 const nbEl = document.getElementById("nb");
 const zoomEl = document.getElementById("zoom");
 const percEl = document.getElementById("perc");
 
+const FRAME60 = 1000 / 60;
+
 function frame(now) {
+  if (!device) { running = false; return; }
   requestAnimationFrame(frame);
-  resize();
-  const el = now - last; last = now;
+
+  const el = Math.min(now - last, 250);
+  last = now;
+  if (document.hidden) return;          // rien a calculer, rien a afficher
+  if (sizeDirty) resize();
+
   acc += el; frames++;
   if (acc > 500) {
     fpsEl.textContent = Math.round(frames * 1000 / acc);
@@ -972,23 +1311,47 @@ function frame(now) {
     percEl.textContent = Math.round(P.count / Math.max(1, grid.total));
   }
 
-  if (matDirty) { device.queue.writeBuffer(R.mat, 0, matrix); matDirty = false; }
+  // matrice : fondu en cours, ou envoi direct apres une edition
+  if (blend.t < 1) {
+    blend.t = Math.min(1, blend.t + el / blend.dur);
+    const k = blend.t * blend.t * (3 - 2 * blend.t);
+    for (let i = 0; i < matGpu.length; i++)
+      matGpu[i] = blend.from[i] + (matrix[i] - blend.from[i]) * k;
+    device.queue.writeBuffer(R.mat, 0, matGpu);
+    matDirty = false;
+  } else if (matDirty) {
+    matGpu.set(matrix);
+    device.queue.writeBuffer(R.mat, 0, matGpu);
+    matDirty = false;
+  }
+
   writeCam();
-  compAB[4] = P.bloom; compAB[5] = P.expo;
+  compAB[4] = P.bloom;
+  compAB[5] = P.expo;
+  compAB[7] = P.sat;
   device.queue.writeBuffer(R.uComp, 0, compAB);
 
   const enc = device.createCommandEncoder();
 
-  if (!paused) {
-    writeParams(P.dt / P.sub);
-    for (let s = 0; s < P.sub; s++) {
+  if (!paused && !extPaused) {
+    // le pas est cale sur le temps reel : la simulation avance a la meme
+    // vitesse sur un ecran 60 Hz et sur un 144 Hz, avec un plafond de
+    // rattrapage pour ne pas exploser apres une pause du systeme.
+    const k = Math.min(el / FRAME60, 3);
+    writeParams(P.dt * k / P.sub);
+    const wgP64 = Math.ceil(P.count / 64);
+    const wgP256 = Math.ceil(P.count / 256);
+    const wgCells = Math.ceil(grid.total / 64);
+    for (let st = 0; st < P.sub; st++) {
       const cp = enc.beginComputePass();
       cp.setBindGroup(0, R.bgCompute);
-      cp.setPipeline(R.pClear); cp.dispatchWorkgroups(Math.ceil(grid.total / 64));
-      cp.setPipeline(R.pCount); cp.dispatchWorkgroups(Math.ceil(P.count / 64));
-      cp.setPipeline(R.pScan);  cp.dispatchWorkgroups(1);
-      cp.setPipeline(R.pScat);  cp.dispatchWorkgroups(Math.ceil(P.count / 64));
-      cp.setPipeline(R.pForce); cp.dispatchWorkgroups(Math.ceil(P.count / 64));
+      cp.setPipeline(R.pClear); cp.dispatchWorkgroups(wgCells);
+      cp.setPipeline(R.pCount); cp.dispatchWorkgroups(wgP64);
+      cp.setPipeline(R.pScanA); cp.dispatchWorkgroups(grid.blocks);
+      cp.setPipeline(R.pScanB); cp.dispatchWorkgroups(1);
+      cp.setPipeline(R.pScanC); cp.dispatchWorkgroups(grid.blocks);
+      cp.setPipeline(R.pScat);  cp.dispatchWorkgroups(wgP64);
+      cp.setPipeline(R.pForce); cp.dispatchWorkgroups(wgP256);
       cp.end();
     }
   }
@@ -1025,6 +1388,8 @@ function frame(now) {
     pass(R.pDown, R.bgDown, R.bloomAV);
     pass(R.pBlur, R.bgBlurH, R.bloomBV);
     pass(R.pBlur, R.bgBlurV, R.bloomAV);
+    pass(R.pBlur, R.bgBlurH2, R.bloomBV);
+    pass(R.pBlur, R.bgBlurV2, R.bloomAV);
   }
 
   // composite to the screen
@@ -1072,12 +1437,28 @@ bind("fric", "friction", v => v.toFixed(3));
 bind("dt", "dt", v => v.toFixed(3));
 bind("sub", "sub", v => String(Math.round(v)), () => { P.sub = Math.round(P.sub); });
 bind("size", "size", v => v.toFixed(1));
+bind("stretch", "stretch", v => v.toFixed(2));
 bind("trail", "trail", v => v.toFixed(2));
 bind("bloom", "bloom", v => v.toFixed(2));
 bind("expo", "expo", v => v.toFixed(2));
+bind("sat", "sat", v => v.toFixed(2));
+
+const rebuildPalette = () => {
+  palette(P.types);
+  repaintDots();
+  if (device) uploadPalette();
+};
+bind("hue", "hue", v => String(Math.round(v)), rebuildPalette);
+bind("spread", "spread", v => String(Math.round(v)), rebuildPalette);
+bind("chroma", "chroma", v => v.toFixed(3), rebuildPalette);
+bind("light", "light", v => v.toFixed(2), rebuildPalette);
+bind("jitter", "jitter", v => v.toFixed(2));
+bind("mforce", "mforce", v => v.toFixed(1));
+bind("mrad", "mrad", v => v.toFixed(2));
 bind("count", "count", v => String(Math.round(v)), () => {
   P.count = Math.round(P.count);
   nbEl.textContent = P.count;
+  ensureSeeded(P.count);       // seule la tranche neuve est semee
 });
 bind("types", "types", v => String(Math.round(v)), () => {
   P.types = Math.round(P.types);
@@ -1088,8 +1469,27 @@ bind("types", "types", v => String(Math.round(v)), () => {
 
 document.getElementById("c-wrap").addEventListener("change", e => { P.wrap = e.target.checked; clampCam(); });
 document.getElementById("c-glow").addEventListener("change", e => P.glow = e.target.checked);
+document.getElementById("c-grad").addEventListener("change", e => P.grad = e.target.checked);
+document.getElementById("c-mouse").addEventListener("change", e => {
+  P.mouseOn = e.target.checked;
+  if (!P.mouseOn) mouse.down = 0;
+  cv.style.cursor = idleCursor();
+});
+document.getElementById("c-autorand").addEventListener("change", e => setAutoRand(e.target.checked));
 document.querySelectorAll("[data-preset]").forEach(b =>
   b.addEventListener("click", () => setMatrix(b.dataset.preset)));
+
+document.querySelectorAll("[data-scheme]").forEach(b =>
+  b.addEventListener("click", () => {
+    const sc = SCHEMES[b.dataset.scheme];
+    if (!sc) return;
+    for (const k in sc) {
+      const el = document.getElementById("s-" + k);
+      if (!el) continue;
+      el.value = String(sc[k]);
+      el.dispatchEvent(new Event("input"));   // rejoue la reconstruction
+    }
+  }));
 
 const pauseBtn = document.getElementById("b-pause");
 pauseBtn.addEventListener("click", () => {
@@ -1104,7 +1504,9 @@ document.getElementById("b-png").addEventListener("click", () => { shot = true; 
 
 const SLIDERS = {
   rmax: "rMax", force: "force", beta: "beta", fric: "friction", dt: "dt", sub: "sub",
-  size: "size", trail: "trail", bloom: "bloom", expo: "expo", count: "count", types: "types"
+  size: "size", stretch: "stretch", trail: "trail", bloom: "bloom", expo: "expo",
+  sat: "sat", hue: "hue", spread: "spread", chroma: "chroma", light: "light",
+  jitter: "jitter", mforce: "mforce", mrad: "mrad", count: "count", types: "types"
 };
 
 // pushes P back into the sliders: each slider min/max acts as a guard rail,
@@ -1115,7 +1517,10 @@ function syncUI() {
     if (s) { s.value = String(P[SLIDERS[id]]); s.dispatchEvent(new Event("input")); }
   }
   document.getElementById("c-wrap").checked = P.wrap;
+  document.getElementById("c-mouse").checked = P.mouseOn;
   document.getElementById("c-glow").checked = P.glow;
+  document.getElementById("c-grad").checked = P.grad;
+  document.getElementById("c-autorand").checked = P.autorand;
 }
 
 function currentSetup() {
@@ -1166,6 +1571,7 @@ function applySetup(o) {
   drawMatrix();
   matDirty = true;
   clampCam();
+  setAutoRand(P.autorand);
   if (device) uploadPalette();
 }
 
@@ -1179,10 +1585,30 @@ function flash(btn, msg) {
 const loadBtn = document.getElementById("b-load");
 const fileIn = document.getElementById("f-load");
 
-document.getElementById("b-save").addEventListener("click", e => {
-  const blob = new Blob([JSON.stringify(currentSetup(), null, 2)], { type: "application/json" });
+document.getElementById("b-save").addEventListener("click", async e => {
+  const data = JSON.stringify(currentSetup(), null, 2);
+  const name = "particle-life-" + new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-") + ".json";
+
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: name,
+        types: [{ description: "JSON setup", accept: { "application/json": [".json"] } }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(data);
+      await writable.close();
+      flash(e.target, "Saved");
+    } catch (err) {
+      if (err.name !== "AbortError") { flash(e.target, "Save failed"); console.warn("Save failed:", err); }
+    }
+    return;
+  }
+
+  // fallback for browsers without the File System Access API: silent download
+  const blob = new Blob([data], { type: "application/json" });
   const a = document.createElement("a");
-  a.download = "particle-life-" + new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-") + ".json";
+  a.download = name;
   a.href = URL.createObjectURL(blob);
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
@@ -1200,7 +1626,21 @@ async function loadFile(f) {
   }
 }
 
-loadBtn.addEventListener("click", () => fileIn.click());
+loadBtn.addEventListener("click", async () => {
+  if (window.showOpenFilePicker) {
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{ description: "JSON setup", accept: { "application/json": [".json"] } }],
+        multiple: false
+      });
+      await loadFile(await handle.getFile());
+    } catch (err) {
+      if (err.name !== "AbortError") { flash(loadBtn, "Invalid file"); console.warn("Load failed:", err); }
+    }
+    return;
+  }
+  fileIn.click();
+});
 fileIn.addEventListener("change", async e => {
   const f = e.target.files[0];
   if (f) await loadFile(f);
@@ -1235,10 +1675,37 @@ function loadHash() {
 
 const panel = document.getElementById("panel");
 const toggle = document.getElementById("toggle");
+const AUTO_HIDE_MS = 3000; // delai d'inactivite avant masquage automatique
+let panelHovered = false, autoHideTimer = null;
+
+function showPanel() {
+  panel.classList.remove("hidden");
+  toggle.textContent = "Hide controls";
+}
+function hidePanel() {
+  panel.classList.add("hidden");
+  toggle.textContent = "Controls";
+}
+function scheduleAutoHide() {
+  clearTimeout(autoHideTimer);
+  if (panelHovered) return;
+  autoHideTimer = setTimeout(hidePanel, AUTO_HIDE_MS);
+}
+
 toggle.addEventListener("click", () => {
-  panel.classList.toggle("hidden");
-  toggle.textContent = panel.classList.contains("hidden") ? "Controls" : "Hide controls";
+  if (panel.classList.contains("hidden")) { showPanel(); scheduleAutoHide(); }
+  else hidePanel();
 });
+panel.addEventListener("pointerenter", () => { panelHovered = true; clearTimeout(autoHideTimer); });
+panel.addEventListener("pointerleave", () => { panelHovered = false; scheduleAutoHide(); });
+panel.addEventListener("input", () => { showPanel(); clearTimeout(autoHideTimer); });
+addEventListener("pointermove", () => {
+  // Un mouvement de souris ne doit relancer le compte a rebours que si le
+  // panneau est deja visible: une fois masque, il ne doit plus jamais
+  // reapparaitre tout seul, seul le bouton / la touche H le rouvre.
+  if (!panel.classList.contains("hidden")) scheduleAutoHide();
+});
+scheduleAutoHide();
 
 /* ---------- mouse ---------- */
 let pan = null, panId = null;
@@ -1246,6 +1713,9 @@ function screenPx(e) {
   const r = cv.getBoundingClientRect();
   return { px: (e.clientX - r.left) * W / r.width, py: (e.clientY - r.top) * H / r.height };
 }
+
+// pixels ecran vers coordonnees monde, en tenant compte du zoom, du
+// cadrage et de l'enroulement torique.
 function toWorld(e) {
   const { px, py } = screenPx(e);
   const s = W * cam.z;
@@ -1255,7 +1725,9 @@ function toWorld(e) {
   mouse.x = x; mouse.y = y;
 }
 
+function idleCursor() { return P.mouseOn ? "crosshair" : "default"; }
 cv.addEventListener("wheel", e => {
+  if (!e.shiftKey) return;
   e.preventDefault();
   const { px, py } = screenPx(e);
   const s0 = W * cam.z;
@@ -1277,14 +1749,16 @@ cv.addEventListener("pointerdown", e => {
     cv.style.cursor = "grabbing";
     return;
   }
+  if (!P.mouseOn) return;
   cv.setPointerCapture(e.pointerId);
   toWorld(e);
-  mouse.down = e.button === 2 ? 2 : 1;
+  mouse.down = e.button === 2 ? 2 : 1;   // gauche attire, droit repousse
 });
 cv.addEventListener("mousedown", e => { if (e.button === 1) e.preventDefault(); });
 cv.addEventListener("auxclick", e => e.preventDefault());
 addEventListener("pointermove", e => {
   if (pan && e.pointerId === panId) {
+    if (e.buttons === 0) { pan = null; panId = null; cv.style.cursor = idleCursor(); return; }
     const p = screenPx(e);
     const s = W * cam.z;
     cam.x -= (p.px - pan.px) / s;
@@ -1293,12 +1767,19 @@ addEventListener("pointermove", e => {
     pan = p;
     return;
   }
-  if (mouse.down && e.target === cv) toWorld(e);
+  if (mouse.down) {
+    if (e.buttons === 0) { mouse.down = 0; return; }   // bouton relache hors fenetre
+    toWorld(e);
+  }
 });
-function endPointer() { mouse.down = 0; pan = null; panId = null; cv.style.cursor = "crosshair"; }
+function endPointer() {
+  mouse.down = 0; pan = null; panId = null;
+  cv.style.cursor = idleCursor();
+}
 addEventListener("pointerup", endPointer);
 addEventListener("pointercancel", endPointer);
 addEventListener("blur", endPointer);
+addEventListener("visibilitychange", () => { if (document.hidden) endPointer(); });
 cv.addEventListener("contextmenu", e => e.preventDefault());
 cv.addEventListener("dblclick", resetView);
 
@@ -1319,28 +1800,120 @@ addEventListener("keydown", e => {
 });
 
 /* ---------- startup ---------- */
+const failBox = document.getElementById("fail");
+
 function showFail(msg) {
   document.getElementById("failmsg").textContent = msg;
-  document.getElementById("fail").style.display = "flex";
+  failBox.style.display = "flex";
   document.getElementById("dev").textContent = "unavailable";
   cv.style.display = "none";
 }
+function hideFail() {
+  failBox.style.display = "none";
+  cv.style.display = "block";
+}
 
-(async function start() {
-  if (!loadHash()) setMatrix("random");
-  drawMatrix();
+// Un fond d'ecran tourne des jours d'affilee : une mise a jour de pilote,
+// un TDR ou une sortie de veille font perdre le device. On reconstruit
+// tout au lieu d'afficher un ecran mort definitif.
+async function startEngine() {
   try {
     await initGPU();
   } catch (err) {
     showFail(err.message || String(err));
-    return;
+    return false;
   }
-  resize();
-  makeTargets();
+  hideFail();          // le canvas doit etre visible avant de le mesurer
+  W = 0; H = 0;
+  resize();            // recree aussi les cibles HDR et les bind groups
   uploadPalette();
   spawn();
+  matDirty = true;
   nbEl.textContent = P.count;
-  requestAnimationFrame(frame);
+  last = performance.now();
+  if (!running) { running = true; requestAnimationFrame(frame); }
+  return true;
+}
+
+function onDeviceLost(msg) {
+  if (restarting) return;
+  restarting = true;
+  running = false;
+  device = null;
+  showFail("GPU device lost (" + msg + "). Reconnecting...");
+  let tries = 0;
+  const retry = async () => {
+    tries++;
+    if (await startEngine()) { restarting = false; return; }
+    if (tries < 60) setTimeout(retry, 3000);
+    else restarting = false;
+  };
+  setTimeout(retry, 1500);
+}
+
+/* ---------- Lively ---------- */
+// Ces trois fonctions ne sont appelees que lorsque la page tourne comme
+// fond d'ecran Lively. Dans un navigateur ordinaire elles dorment.
+
+function setCtl(id, val) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (el.type === "checkbox") {
+    el.checked = !!val;
+    el.dispatchEvent(new Event("change"));
+  } else {
+    el.value = String(val);
+    el.dispatchEvent(new Event("input"));
+  }
+}
+
+window.livelyPropertyListener = (name, val) => {
+  switch (name) {
+    case "particles":     setCtl("s-count", val); break;
+    case "colors":        setCtl("s-types", val); break;
+    case "range":         setCtl("s-rmax", val / 1000); break;
+    case "force":         setCtl("s-force", val); break;
+    case "hardcore":      setCtl("s-beta", val / 100); break;
+    case "damping":       setCtl("s-fric", val / 1000); break;
+    case "speed":         setCtl("s-dt", val / 1000); break;
+    case "substeps":      setCtl("s-sub", val); break;
+    case "dotsize":       setCtl("s-size", val / 10); break;
+    case "motionblur":    setCtl("s-stretch", val / 100); break;
+    case "hue":           setCtl("s-hue", val); break;
+    case "spread":        setCtl("s-spread", val); break;
+    case "chroma":        setCtl("s-chroma", val / 100); break;
+    case "lightness":     setCtl("s-light", val / 100); break;
+    case "jitter":        setCtl("s-jitter", val / 100); break;
+    case "mouseforce":    setCtl("s-mforce", val / 10); break;
+    case "mouseradius":   setCtl("s-mrad", val / 100); break;
+    case "mouseon":       setCtl("c-mouse", val); break;
+    case "saturation":    setCtl("s-sat", val / 100); break;
+    case "trails":        setCtl("s-trail", val / 100); break;
+    case "glowAmount":    setCtl("s-bloom", val / 100); break;
+    case "exposure":      setCtl("s-expo", val / 100); break;
+    case "wrap":          setCtl("c-wrap", val); break;
+    case "additive":      setCtl("c-glow", val); break;
+    case "softdots":      setCtl("c-grad", val); break;
+    case "autorandom":    setCtl("c-autorand", val); break;
+    case "showpanel":     if (val) showPanel(); else hidePanel(); break;
+    case "randomizeNow":  setMatrix("random", 6000); break;
+    case "respawnNow":    spawn(); break;
+  }
+};
+
+// Lively ne suspend que le rendu, le JavaScript continue de tourner :
+// sans ce relais les passes de calcul tourneraient pendant les jeux.
+window.livelyWallpaperPlaybackChanged = d => {
+  extPaused = !!(d && (d.IsPaused === true || d.isPaused === true));
+};
+
+(async function start() {
+  cv.style.cursor = idleCursor();
+  if (!loadHash()) setMatrix("random");
+  matGpu.set(matrix);
+  setAutoRand(P.autorand);
+  drawMatrix();
+  await startEngine();
 })();
 </script>
 </body>
