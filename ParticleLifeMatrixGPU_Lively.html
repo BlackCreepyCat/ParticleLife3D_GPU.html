@@ -114,8 +114,8 @@
     </div>
     <div class="row" style="margin-top:20px">
       <label for="s-autorand">Auto randomize</label>
-      <input type="range" id="s-autorand" min="0" max="5" step="0.5" value="5">
-      <output id="o-autorand">5 min</output>
+      <input type="range" id="s-autorand" min="0" max="5" step="0.5" value="1">
+      <output id="o-autorand">1 min</output>
     </div>
     <p class="hint" style="margin-bottom:0">Delay in minutes between two automatic draws, with a cross-fade of a quarter of that delay. At 0 the matrix never changes on its own.</p>
   </section>
@@ -239,7 +239,7 @@
     </div>
     <div class="row">
       <label for="s-sat">Saturation</label>
-      <input type="range" id="s-sat" min="0.4" max="2" step="0.05" value="1.15">
+      <input type="range" id="s-sat" min="0.4" max="2" step="0.05" value="2">
       <output id="o-sat">1.15</output>
     </div>
     <label class="check"><input type="checkbox" id="c-glow" checked> Additive blending</label>
@@ -304,8 +304,8 @@ const P = {
   chroma: 0.14,
   light: 0.72,
   jitter: 0.12,
-  sat: 1.15,
-  autorand: 5          // minutes entre deux tirages, 0 = jamais
+  sat: 2.0,
+  autorand: 1          // minutes entre deux tirages, 0 = jamais
 };
 
 const matrix = new Float32Array(MAXT * MAXT);   // cible, editee par l'interface
