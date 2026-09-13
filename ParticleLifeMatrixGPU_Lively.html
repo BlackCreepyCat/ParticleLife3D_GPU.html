@@ -112,7 +112,12 @@
       <button class="b" data-preset="cycle">Chase</button>
       <button class="b" data-preset="zero">Clear</button>
     </div>
-    <label class="check" style="margin-top:20px"><input type="checkbox" id="c-autorand" checked> Randomize matrix every 5 min, 20 s cross-fade</label>
+    <div class="row" style="margin-top:20px">
+      <label for="s-autorand">Auto randomize</label>
+      <input type="range" id="s-autorand" min="0" max="5" step="0.5" value="5">
+      <output id="o-autorand">5 min</output>
+    </div>
+    <p class="hint" style="margin-bottom:0">Delay in minutes between two automatic draws, with a cross-fade of a quarter of that delay. At 0 the matrix never changes on its own.</p>
   </section>
 
   <section>
@@ -300,7 +305,7 @@ const P = {
   light: 0.72,
   jitter: 0.12,
   sat: 1.15,
-  autorand: true
+  autorand: 5          // minutes entre deux tirages, 0 = jamais
 };
 
 const matrix = new Float32Array(MAXT * MAXT);   // cible, editee par l'interface
@@ -412,12 +417,26 @@ function setMatrix(preset, fadeMs) {
   matDirty = true;
 }
 
+// Le reglage est un delai en minutes. 0 fige la matrice, les anciens setups
+// qui stockaient un booleen sont relus comme 5 min ou 0.
+function normAutorand(v) {
+  if (v === true) return 5;
+  if (v === false) return 0;
+  const n = parseFloat(v);
+  if (!isFinite(n) || n < 0) return 0;
+  return Math.min(5, n);
+}
+
 let autoRandTimer = null;
-function setAutoRand(on) {
-  P.autorand = on;
+function setAutoRand(minutes) {
+  const m = normAutorand(minutes);
+  P.autorand = m;
   if (autoRandTimer) { clearInterval(autoRandTimer); autoRandTimer = null; }
-  if (on) {
-    autoRandTimer = setInterval(() => setMatrix("random", 20000), 5 * 60 * 1000);
+  if (m > 0) {
+    const period = m * 60 * 1000;
+    // le fondu occupe un quart du cycle : court delai, transition courte
+    const fade = Math.min(20000, period * 0.25);
+    autoRandTimer = setInterval(() => setMatrix("random", fade), period);
   }
 }
 
@@ -1445,7 +1464,8 @@ bind("types", "types", v => String(Math.round(v)), () => {
 document.getElementById("c-wrap").addEventListener("change", e => { P.wrap = e.target.checked; clampCam(); });
 document.getElementById("c-glow").addEventListener("change", e => P.glow = e.target.checked);
 document.getElementById("c-grad").addEventListener("change", e => P.grad = e.target.checked);
-document.getElementById("c-autorand").addEventListener("change", e => setAutoRand(e.target.checked));
+bind("autorand", "autorand", v => (v > 0 ? (Number.isInteger(v) ? v + " min" : v.toFixed(1) + " min") : "off"),
+     () => setAutoRand(P.autorand));
 document.querySelectorAll("[data-preset]").forEach(b =>
   b.addEventListener("click", () => setMatrix(b.dataset.preset)));
 
@@ -1476,7 +1496,7 @@ const SLIDERS = {
   rmax: "rMax", force: "force", beta: "beta", fric: "friction", dt: "dt", sub: "sub",
   size: "size", stretch: "stretch", trail: "trail", bloom: "bloom", expo: "expo",
   sat: "sat", hue: "hue", spread: "spread", chroma: "chroma", light: "light",
-  jitter: "jitter", count: "count", types: "types"
+  jitter: "jitter", count: "count", types: "types", autorand: "autorand"
 };
 
 // pushes P back into the sliders: each slider min/max acts as a guard rail,
@@ -1489,7 +1509,6 @@ function syncUI() {
   document.getElementById("c-wrap").checked = P.wrap;
   document.getElementById("c-glow").checked = P.glow;
   document.getElementById("c-grad").checked = P.grad;
-  document.getElementById("c-autorand").checked = P.autorand;
 }
 
 function currentSetup() {
@@ -1520,6 +1539,8 @@ function applySetup(o) {
     if (typeof v === "number" && isFinite(v)) P[k] = v;
     else if (typeof v === "boolean") P[k] = v;
   }
+
+  if (src.autorand !== undefined) P.autorand = normAutorand(src.autorand);
 
   const flat = Array.isArray(raw[0]) ? raw.flat() : raw;
   let n = Math.round(P.types);
@@ -1834,7 +1855,7 @@ window.livelyPropertyListener = (name, val) => {
     case "wrap":          setCtl("c-wrap", val); break;
     case "additive":      setCtl("c-glow", val); break;
     case "softdots":      setCtl("c-grad", val); break;
-    case "autorandom":    setCtl("c-autorand", val); break;
+    case "autorandom":    setCtl("s-autorand", normAutorand(val)); break;
     case "showpanel":     if (val) showPanel(); else hidePanel(); break;
     case "randomizeNow":  setMatrix("random", 6000); break;
     case "respawnNow":    spawn(); break;
