@@ -1,0 +1,1347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Particle Life GPU</title>
+<style>
+  :root{
+    --bg:#07080b;
+    --panel:#101319;
+    --panel-2:#171b23;
+    --line:#242a35;
+    --text:#dfe3ea;
+    --muted:#8892a4;
+    --accent:#e0a458;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;overflow:hidden;display:flex}
+  #stage{position:relative;flex:1;min-width:0}
+  canvas{display:block;width:100%;height:100%;cursor:crosshair}
+
+  #hud{position:absolute;left:14px;top:12px;font-family:var(--mono);font-size:11px;
+       color:var(--muted);letter-spacing:.04em;pointer-events:none;text-shadow:0 1px 3px #000}
+  #hud b{color:var(--text);font-weight:500}
+
+  #toggle{position:absolute;right:14px;top:12px;background:rgba(16,19,25,.85);
+          border:1px solid var(--line);color:var(--muted);border-radius:4px;padding:6px 10px;
+          font-family:var(--sans);font-size:12px;cursor:pointer}
+  #toggle:hover{color:var(--text);border-color:#39414f}
+
+  #fail{position:absolute;inset:0;display:none;flex-direction:column;justify-content:center;
+        align-items:center;text-align:center;padding:40px;gap:10px}
+  #fail h2{font-size:16px;margin:0}
+  #fail p{color:var(--muted);max-width:44ch;line-height:1.6;margin:0}
+
+  aside{width:318px;flex:none;background:var(--panel);border-left:1px solid var(--line);
+        overflow-y:auto;overscroll-behavior:contain;padding:16px 16px 40px}
+  aside.hidden{display:none}
+  aside::-webkit-scrollbar{width:9px}
+  aside::-webkit-scrollbar-thumb{background:#242a35;border-radius:9px}
+
+  h1{font-size:15px;font-weight:600;margin:0 0 2px}
+  .sub{color:var(--muted);font-size:11.5px;margin:0 0 18px;line-height:1.5}
+  section{border-top:1px solid var(--line);padding:14px 0 4px}
+  section > h2{font-size:12px;font-weight:600;margin:0 0 10px}
+
+  .row{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+  .row label{flex:1;color:var(--muted)}
+  .row output{font-family:var(--mono);font-size:11px;width:52px;text-align:right}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:126px;height:2px;
+                    background:#2c3340;border-radius:2px;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;
+    border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid var(--panel)}
+  input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:2px solid var(--panel)}
+  input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:6px}
+
+  .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+  button.b{background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+           border-radius:4px;padding:6px 9px;font-size:11.5px;cursor:pointer;font-family:var(--sans)}
+  button.b:hover{border-color:#3c4553;background:#1d222b}
+  button.b:active{transform:translateY(1px)}
+  button.b.on{border-color:var(--accent);color:var(--accent)}
+  button.b:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  .check{display:flex;align-items:center;gap:8px;margin-bottom:9px;color:var(--muted);cursor:pointer}
+  .check input{accent-color:var(--accent)}
+
+  #matrix{border-collapse:separate;border-spacing:2px;margin:2px 0 10px}
+  #matrix td{padding:0}
+  .dot{width:14px;height:14px;border-radius:50%;display:block;margin:auto}
+  .cell{width:30px;height:26px;border-radius:3px;font-family:var(--mono);font-size:10px;
+        display:flex;align-items:center;justify-content:center;cursor:ns-resize;user-select:none;
+        color:#0c0e12;font-weight:600;touch-action:none}
+  .cell.z{color:#5a6274}
+  .hint{color:var(--muted);font-size:11px;line-height:1.5;margin:0 0 10px}
+  .fine{color:#66707f;font-size:10.5px;line-height:1.5;margin:12px 0 0}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="cv"></canvas>
+  <div id="hud"><b id="fps">--</b> fps · <b id="nb">0</b> particles · zoom <b id="zoom">1.0</b> · <span id="dev">init</span></div>
+  <button id="toggle">Hide controls</button>
+  <div id="fail">
+    <h2>WebGPU is not available</h2>
+    <p id="failmsg"></p>
+    <p>On Chrome and Edge, WebGPU needs version 113 or newer and a GPU that is not blocklisted. On Linux the Vulkan flag sometimes has to be enabled. The canvas 2D build of the same program runs everywhere.</p>
+  </div>
+</div>
+
+<aside id="panel">
+  <h1>Particle Life</h1>
+  <p class="sub">WebGPU engine: forces, spatial grid and integration all run in compute shaders. The particles never travel back to the CPU.</p>
+
+  <section style="border-top:none;padding-top:0">
+    <h2>Interaction matrix</h2>
+    <p class="hint">Row = who feels the force, column = who applies it. Drag vertically inside a cell, double-click to reset it to zero.</p>
+    <table id="matrix"></table>
+    <div class="btns">
+      <button class="b" data-preset="random">Randomize</button>
+      <button class="b" data-preset="sym">Symmetric</button>
+      <button class="b" data-preset="chains">Chains</button>
+      <button class="b" data-preset="cycle">Chase</button>
+      <button class="b" data-preset="zero">Clear</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Population</h2>
+    <div class="row">
+      <label for="s-types">Colors</label>
+      <input type="range" id="s-types" min="2" max="10" step="1" value="6">
+      <output id="o-types">6</output>
+    </div>
+    <div class="row">
+      <label for="s-count">Particles</label>
+      <input type="range" id="s-count" min="1000" max="500000" step="1000" value="60000">
+      <output id="o-count">60000</output>
+    </div>
+    <div class="btns">
+      <button class="b" id="b-reset">Respawn</button>
+      <button class="b" id="b-pause">Pause</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Physics</h2>
+    <div class="row">
+      <label for="s-rmax">Range</label>
+      <input type="range" id="s-rmax" min="0.003" max="0.15" step="0.001" value="0.014">
+      <output id="o-rmax">0.014</output>
+    </div>
+    <div class="row">
+      <label for="s-force">Force</label>
+      <input type="range" id="s-force" min="1" max="40" step="0.5" value="12">
+      <output id="o-force">12</output>
+    </div>
+    <div class="row">
+      <label for="s-beta">Hard core</label>
+      <input type="range" id="s-beta" min="0.05" max="0.6" step="0.01" value="0.30">
+      <output id="o-beta">0.30</output>
+    </div>
+    <div class="row">
+      <label for="s-fric">Damping</label>
+      <input type="range" id="s-fric" min="0.005" max="0.5" step="0.005" value="0.04">
+      <output id="o-fric">0.040</output>
+    </div>
+    <div class="row">
+      <label for="s-dt">Time step</label>
+      <input type="range" id="s-dt" min="0.002" max="0.03" step="0.001" value="0.010">
+      <output id="o-dt">0.010</output>
+    </div>
+    <div class="row">
+      <label for="s-sub">Substeps</label>
+      <input type="range" id="s-sub" min="1" max="4" step="1" value="1">
+      <output id="o-sub">1</output>
+    </div>
+    <label class="check"><input type="checkbox" id="c-wrap" checked> Toroidal space (wrapped edges)</label>
+  </section>
+
+  <section>
+    <h2>Rendering</h2>
+    <div class="row">
+      <label for="s-size">Size</label>
+      <input type="range" id="s-size" min="0.4" max="6" step="0.1" value="2.0">
+      <output id="o-size">2.0</output>
+    </div>
+    <div class="row">
+      <label for="s-trail">Trails</label>
+      <input type="range" id="s-trail" min="0" max="0.95" step="0.01" value="0">
+      <output id="o-trail">0.00</output>
+    </div>
+    <div class="row">
+      <label for="s-bloom">Glow</label>
+      <input type="range" id="s-bloom" min="0" max="3" step="0.05" value="0.3">
+      <output id="o-bloom">0.30</output>
+    </div>
+    <div class="row">
+      <label for="s-expo">Exposure</label>
+      <input type="range" id="s-expo" min="0.3" max="4" step="0.05" value="1.4">
+      <output id="o-expo">1.40</output>
+    </div>
+    <label class="check"><input type="checkbox" id="c-glow" checked> Additive blending</label>
+    <div class="btns">
+      <button class="b" id="b-png">Save PNG</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Setups</h2>
+    <p class="hint">The JSON file holds the settings and the matrix in plain text, editable by hand. It is interchangeable with the canvas 2D build.</p>
+    <div class="btns">
+      <button class="b" id="b-save">Save JSON</button>
+      <button class="b" id="b-load">Load JSON</button>
+      <button class="b" id="b-link">Copy link</button>
+    </div>
+    <input type="file" id="f-load" accept=".json,application/json" hidden>
+  </section>
+
+  <p class="fine">Mouse: hold left click to attract, right click to repel.<br>
+  View: wheel zooms, middle click or Shift + drag pans, double-click reframes.<br>
+  Keys: Space pauses, R respawns, M draws a new matrix, 0 reframes, H hides the panel.<br>
+  A setup file can also be dropped straight onto the view.<br><br>
+  Range drives the cost: the grid holds about <span id="perc">0</span> particles per cell, and each one examines nine of them. Past 60 per cell, lower the range rather than the population.</p>
+</aside>
+
+<script type="module">
+"use strict";
+
+/* ==================================================================
+   Particle Life, WebGPU engine.
+   Each frame: clear the counters, count, prefix sum, sorted scatter,
+   then forces and integration. Nothing travels back to the CPU,
+   the renderer reads the buffers directly.
+================================================================== */
+
+const MAXT = 10;
+const MAXCELLS = 262144;
+let MAXN = 500000;
+
+const P = {
+  types: 6,
+  count: 60000,
+  rMax: 0.014,
+  force: 12,
+  beta: 0.30,
+  friction: 0.04,
+  dt: 0.010,
+  sub: 1,
+  wrap: true,
+  size: 2.0,
+  trail: 0.0,
+  bloom: 0.3,
+  expo: 1.4,
+  glow: true
+};
+
+const matrix = new Float32Array(MAXT * MAXT);
+let worldH = 0.6;
+let paused = false;
+const mouse = { x: 0, y: 0, down: 0 };
+const cam = { x: 0.5, y: 0.3, z: 1 };
+
+const cv = document.getElementById("cv");
+let W = 1, H = 1, dpr = 1;
+
+/* ---------- colors ---------- */
+function hsl2rgb(h, s, l) {
+  const k = n => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return [f(0), f(8), f(4)];
+}
+let colors = [], rgb = [];
+function palette(n) {
+  colors = []; rgb = [];
+  for (let i = 0; i < n; i++) {
+    const h = (360 * i / n + 8) % 360;
+    colors.push(`hsl(${Math.round(h)} 78% 62%)`);
+    rgb.push(hsl2rgb(h, 0.78, 0.62));
+  }
+}
+palette(P.types);
+
+/* ---------- matrix ---------- */
+function setMatrix(preset) {
+  const n = P.types;
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      let v = 0;
+      switch (preset) {
+        case "random": v = Math.random() * 2 - 1; break;
+        case "sym":    v = (j < i) ? matrix[j * MAXT + i] : Math.random() * 2 - 1; break;
+        case "chains": v = (i === j) ? 1 : (j === (i + 1) % n ? 0.35 : (j === (i - 1 + n) % n ? 0.35 : -0.7)); break;
+        case "cycle":  v = (j === (i + 1) % n) ? 0.9 : (j === (i - 1 + n) % n ? -0.9 : (i === j ? 0.25 : 0)); break;
+        default: v = 0;
+      }
+      matrix[i * MAXT + j] = Math.round(v * 100) / 100;
+    }
+  }
+  drawMatrix();
+  matDirty = true;
+}
+
+function cellColor(v) {
+  if (Math.abs(v) < 0.02) return "#1b202a";
+  const a = Math.min(1, Math.abs(v));
+  return v > 0 ? `rgba(94,214,164,${0.18 + a * 0.82})` : `rgba(226,88,92,${0.18 + a * 0.82})`;
+}
+
+const table = document.getElementById("matrix");
+let matDirty = true;
+
+function drawMatrix() {
+  const n = P.types;
+  table.innerHTML = "";
+  const head = table.insertRow();
+  head.insertCell().innerHTML = "";
+  for (let j = 0; j < n; j++)
+    head.insertCell().innerHTML = `<span class="dot" style="background:${colors[j]}"></span>`;
+  for (let i = 0; i < n; i++) {
+    const tr = table.insertRow();
+    tr.insertCell().innerHTML = `<span class="dot" style="background:${colors[i]}"></span>`;
+    for (let j = 0; j < n; j++) {
+      const td = tr.insertCell();
+      const d = document.createElement("div");
+      d.className = "cell";
+      d.dataset.i = i; d.dataset.j = j;
+      paintCell(d);
+      td.appendChild(d);
+    }
+  }
+}
+function paintCell(el) {
+  const v = matrix[el.dataset.i * MAXT + (+el.dataset.j)];
+  el.style.background = cellColor(v);
+  el.textContent = v.toFixed(2).replace("0.", ".");
+  el.classList.toggle("z", Math.abs(v) < 0.02);
+}
+
+let drag = null;
+table.addEventListener("pointerdown", e => {
+  const el = e.target.closest(".cell");
+  if (!el) return;
+  el.setPointerCapture(e.pointerId);
+  drag = { el, y: e.clientY, v: matrix[el.dataset.i * MAXT + (+el.dataset.j)] };
+  e.preventDefault();
+});
+table.addEventListener("pointermove", e => {
+  if (!drag) return;
+  let v = drag.v - (e.clientY - drag.y) * 0.008;
+  v = Math.max(-1, Math.min(1, Math.round(v * 100) / 100));
+  matrix[drag.el.dataset.i * MAXT + (+drag.el.dataset.j)] = v;
+  paintCell(drag.el);
+  matDirty = true;
+});
+addEventListener("pointerup", () => { drag = null; });
+table.addEventListener("dblclick", e => {
+  const el = e.target.closest(".cell");
+  if (!el) return;
+  matrix[el.dataset.i * MAXT + (+el.dataset.j)] = 0;
+  paintCell(el);
+  matDirty = true;
+});
+
+/* ---------- shaders ---------- */
+
+const COMPUTE_WGSL = `
+struct Params {
+  rMax2: f32, invRMax: f32, beta: f32, invBeta: f32,
+  invTail: f32, scale: f32, dt: f32, damp: f32,
+  cellW: f32, cellH: f32, worldH: f32, mouseX: f32,
+  mouseY: f32, mouseR: f32, mouseF: f32, pad0: f32,
+  count: u32, cols: u32, rows: u32, cellTotal: u32,
+  wrap: u32, pad1: u32, pad2: u32, pad3: u32,
+};
+
+@group(0) @binding(0) var<uniform> P: Params;
+@group(0) @binding(1) var<storage, read_write> posVel: array<vec4<f32>>;
+@group(0) @binding(2) var<storage, read_write> posVelSorted: array<vec4<f32>>;
+@group(0) @binding(3) var<storage, read_write> kindIn: array<u32>;
+@group(0) @binding(4) var<storage, read_write> kindSorted: array<u32>;
+@group(0) @binding(5) var<storage, read_write> counts: array<atomic<u32>>;
+@group(0) @binding(6) var<storage, read_write> cellStart: array<u32>;
+@group(0) @binding(7) var<storage, read_write> cursor: array<atomic<u32>>;
+@group(0) @binding(8) var<storage, read> mat: array<f32>;
+
+fn cellOf(p: vec2<f32>) -> u32 {
+  let gx = clamp(i32(floor(p.x / P.cellW)), 0, i32(P.cols) - 1);
+  let gy = clamp(i32(floor(p.y / P.cellH)), 0, i32(P.rows) - 1);
+  return u32(gy) * P.cols + u32(gx);
+}
+
+@compute @workgroup_size(64)
+fn clearCells(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let c = gid.x;
+  if (c >= P.cellTotal) { return; }
+  atomicStore(&counts[c], 0u);
+  atomicStore(&cursor[c], 0u);
+}
+
+@compute @workgroup_size(64)
+fn countCells(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = gid.x;
+  if (i >= P.count) { return; }
+  atomicAdd(&counts[cellOf(posVel[i].xy)], 1u);
+}
+
+var<workgroup> part: array<u32, 256>;
+
+@compute @workgroup_size(256)
+fn scanCells(@builtin(local_invocation_id) lid: vec3<u32>) {
+  let t = lid.x;
+  let C = P.cellTotal;
+  let chunk = (C + 255u) / 256u;
+  let b = min(t * chunk, C);
+  let e = min(b + chunk, C);
+
+  var s = 0u;
+  for (var i = b; i < e; i = i + 1u) { s = s + atomicLoad(&counts[i]); }
+  part[t] = s;
+  workgroupBarrier();
+
+  for (var d = 1u; d < 256u; d = d * 2u) {
+    var v = 0u;
+    if (t >= d) { v = part[t - d]; }
+    workgroupBarrier();
+    part[t] = part[t] + v;
+    workgroupBarrier();
+  }
+
+  var acc = 0u;
+  if (t > 0u) { acc = part[t - 1u]; }
+  for (var i = b; i < e; i = i + 1u) {
+    cellStart[i] = acc;
+    acc = acc + atomicLoad(&counts[i]);
+  }
+  if (t == 255u) { cellStart[C] = part[255u]; }
+}
+
+@compute @workgroup_size(64)
+fn scatter(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = gid.x;
+  if (i >= P.count) { return; }
+  let pv = posVel[i];
+  let c = cellOf(pv.xy);
+  let dst = cellStart[c] + atomicAdd(&cursor[c], 1u);
+  posVelSorted[dst] = pv;
+  kindSorted[dst] = kindIn[i];
+}
+
+@compute @workgroup_size(64)
+fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = gid.x;
+  if (i >= P.count) { return; }
+
+  let pv = posVelSorted[i];
+  let p = pv.xy;
+  let ti = kindSorted[i];
+  let world = vec2<f32>(1.0, P.worldH);
+  let wrapOn = P.wrap == 1u;
+  var f = vec2<f32>(0.0, 0.0);
+
+  let cgx = clamp(i32(floor(p.x / P.cellW)), 0, i32(P.cols) - 1);
+  let cgy = clamp(i32(floor(p.y / P.cellH)), 0, i32(P.rows) - 1);
+
+  for (var dy = -1; dy <= 1; dy = dy + 1) {
+    var gy = cgy + dy;
+    var oy = 0.0;
+    if (gy < 0) {
+      if (!wrapOn || P.rows < 3u) { continue; }
+      gy = i32(P.rows) - 1;
+      oy = -P.worldH;
+    } else if (gy >= i32(P.rows)) {
+      if (!wrapOn || P.rows < 3u) { continue; }
+      gy = 0;
+      oy = P.worldH;
+    }
+
+    for (var dx = -1; dx <= 1; dx = dx + 1) {
+      var gx = cgx + dx;
+      var ox = 0.0;
+      if (gx < 0) {
+        if (!wrapOn || P.cols < 3u) { continue; }
+        gx = i32(P.cols) - 1;
+        ox = -1.0;
+      } else if (gx >= i32(P.cols)) {
+        if (!wrapOn || P.cols < 3u) { continue; }
+        gx = 0;
+        ox = 1.0;
+      }
+
+      let c = u32(gy) * P.cols + u32(gx);
+      let e = cellStart[c + 1u];
+      let off = vec2<f32>(ox, oy);
+
+      for (var k = cellStart[c]; k < e; k = k + 1u) {
+        if (k == i) { continue; }
+        let d = posVelSorted[k].xy + off - p;
+        let d2 = dot(d, d);
+        if (d2 >= P.rMax2 || d2 <= 0.0) { continue; }
+        let dist = sqrt(d2);
+        let r = dist * P.invRMax;
+        let a = mat[ti * 10u + kindSorted[k]];
+        var mag = a * (1.0 - abs(2.0 * r - 1.0 - P.beta) * P.invTail);
+        if (r < P.beta) { mag = r * P.invBeta - 1.0; }
+        f = f + d * (mag / dist);
+      }
+    }
+  }
+
+  f = f * P.scale;
+
+  if (P.mouseF != 0.0) {
+    var m = vec2<f32>(P.mouseX, P.mouseY) - p;
+    if (wrapOn) { m = m - round(m / world) * world; }
+    let d2 = dot(m, m);
+    if (d2 < P.mouseR * P.mouseR && d2 > 1e-10) {
+      let dist = sqrt(d2);
+      f = f + m * (P.mouseF * (1.0 - dist / P.mouseR) / dist);
+    }
+  }
+
+  var v = pv.zw * P.damp + f * P.dt;
+  var q = p + v * P.dt;
+
+  if (wrapOn) {
+    q = q - floor(q / world) * world;
+  } else {
+    if (q.x < 0.0) { q.x = 0.0; v.x = -0.5 * v.x; }
+    else if (q.x > 1.0) { q.x = 0.99999; v.x = -0.5 * v.x; }
+    if (q.y < 0.0) { q.y = 0.0; v.y = -0.5 * v.y; }
+    else if (q.y > P.worldH) { q.y = P.worldH * 0.99999; v.y = -0.5 * v.y; }
+  }
+
+  posVel[i] = vec4<f32>(q, v);
+  kindIn[i] = ti;
+}
+`;
+
+const PARTICLE_WGSL = `
+struct Cam {
+  camX: f32, camY: f32, zoom: f32, worldH: f32,
+  rx: f32, ry: f32, wrap: f32, alpha: f32,
+};
+
+@group(0) @binding(0) var<uniform> C: Cam;
+@group(0) @binding(1) var<storage, read> posVel: array<vec4<f32>>;
+@group(0) @binding(2) var<storage, read> kindBuf: array<u32>;
+@group(0) @binding(3) var<storage, read> palette: array<vec4<f32>>;
+
+struct VOut {
+  @builtin(position) pos: vec4<f32>,
+  @location(0) uv: vec2<f32>,
+  @location(1) col: vec3<f32>,
+};
+
+@vertex
+fn vsParticle(@builtin(vertex_index) vi: u32,
+              @builtin(instance_index) ii: u32) -> VOut {
+  var corner = array<vec2<f32>, 4>(
+    vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0),
+    vec2<f32>(-1.0,  1.0), vec2<f32>(1.0,  1.0));
+
+  let q = corner[vi];
+  var p = posVel[ii].xy;
+
+  if (C.wrap > 0.5) {
+    p.x = p.x - round(p.x - C.camX);
+    p.y = p.y - round((p.y - C.camY) / C.worldH) * C.worldH;
+  }
+
+  let ndc = vec2<f32>(
+    (p.x - C.camX) * C.zoom * 2.0,
+    -(p.y - C.camY) * C.zoom * 2.0 / C.worldH);
+
+  var o: VOut;
+  o.pos = vec4<f32>(ndc + q * vec2<f32>(C.rx, C.ry), 0.0, 1.0);
+  o.uv = q;
+  o.col = palette[kindBuf[ii]].rgb * C.alpha;
+  return o;
+}
+
+@fragment
+fn fsParticle(in: VOut) -> @location(0) vec4<f32> {
+  let a = 1.0 - smoothstep(0.45, 1.0, length(in.uv));
+  return vec4<f32>(in.col * a, a);
+}
+
+@vertex
+fn vsFade(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4<f32> {
+  var v = array<vec2<f32>, 3>(
+    vec2<f32>(-1.0, -3.0), vec2<f32>(-1.0, 1.0), vec2<f32>(3.0, 1.0));
+  return vec4<f32>(v[vi], 0.0, 1.0);
+}
+
+@fragment
+fn fsFade() -> @location(0) vec4<f32> {
+  return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+}
+`;
+
+const POST_WGSL = `
+struct Post {
+  texel: vec2<f32>, dir: vec2<f32>,
+  bloom: f32, exposure: f32, pad0: f32, pad1: f32,
+};
+
+@group(0) @binding(0) var<uniform> U: Post;
+@group(0) @binding(1) var samp: sampler;
+@group(0) @binding(2) var texA: texture_2d<f32>;
+@group(0) @binding(3) var texB: texture_2d<f32>;
+
+struct FOut {
+  @builtin(position) pos: vec4<f32>,
+  @location(0) uv: vec2<f32>,
+};
+
+@vertex
+fn vsFull(@builtin(vertex_index) vi: u32) -> FOut {
+  var v = array<vec2<f32>, 3>(
+    vec2<f32>(-1.0, -3.0), vec2<f32>(-1.0, 1.0), vec2<f32>(3.0, 1.0));
+  let p = v[vi];
+  var o: FOut;
+  o.pos = vec4<f32>(p, 0.0, 1.0);
+  o.uv = vec2<f32>(p.x * 0.5 + 0.5, 0.5 - p.y * 0.5);
+  return o;
+}
+
+@fragment
+fn fsDown(in: FOut) -> @location(0) vec4<f32> {
+  // four bilinear taps one source texel out: each averages a 2x2 block,
+  // so the sixteen source pixels of the destination pixel.
+  let o = U.texel;
+  var acc = textureSample(texA, samp, in.uv + vec2<f32>( o.x,  o.y));
+  acc = acc + textureSample(texA, samp, in.uv + vec2<f32>(-o.x,  o.y));
+  acc = acc + textureSample(texA, samp, in.uv + vec2<f32>( o.x, -o.y));
+  acc = acc + textureSample(texA, samp, in.uv + vec2<f32>(-o.x, -o.y));
+  return acc * 0.25;
+}
+
+@fragment
+fn fsBlur(in: FOut) -> @location(0) vec4<f32> {
+  var w = array<f32, 5>(0.227027, 0.194595, 0.121622, 0.054054, 0.016216);
+  var acc = textureSample(texA, samp, in.uv) * w[0];
+  for (var i = 1u; i < 5u; i = i + 1u) {
+    let off = U.dir * U.texel * f32(i) * 1.7;
+    acc = acc + textureSample(texA, samp, in.uv + off) * w[i];
+    acc = acc + textureSample(texA, samp, in.uv - off) * w[i];
+  }
+  return acc;
+}
+
+@fragment
+fn fsComposite(in: FOut) -> @location(0) vec4<f32> {
+  let scene = textureSample(texA, samp, in.uv).rgb;
+  let glow = textureSample(texB, samp, in.uv).rgb;
+  let lit = scene + glow * U.bloom;
+  let mapped = vec3<f32>(1.0) - exp(-lit * U.exposure);
+  let bg = vec3<f32>(0.027, 0.031, 0.043);
+  return vec4<f32>(bg + mapped, 1.0);
+}
+`;
+
+/* ---------- GPU initialisation ---------- */
+
+let device = null, ctx = null, fmt = null;
+const R = {};
+const HDR = "rgba16float";
+
+async function initGPU() {
+  if (!navigator.gpu) throw new Error("navigator.gpu is missing from this browser.");
+  const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
+  if (!adapter) throw new Error("No GPU adapter answered.");
+  device = await adapter.requestDevice();
+  device.lost.then(info => showFail("The GPU device was lost: " + info.message));
+
+  ctx = cv.getContext("webgpu");
+  if (!ctx) throw new Error("The canvas refused the webgpu context.");
+  fmt = navigator.gpu.getPreferredCanvasFormat();
+  ctx.configure({ device, format: fmt, alphaMode: "opaque" });
+
+  // the position buffer capacity caps the population
+  const cap = Math.floor(Math.min(adapter.limits.maxStorageBufferBindingSize,
+                                  adapter.limits.maxBufferSize) / 16);
+  MAXN = Math.min(MAXN, cap);
+  const sCount = document.getElementById("s-count");
+  sCount.max = String(MAXN);
+  if (P.count > MAXN) { P.count = MAXN; sCount.value = String(MAXN); }
+
+  const st = GPUBufferUsage.STORAGE, cd = GPUBufferUsage.COPY_DST, un = GPUBufferUsage.UNIFORM;
+  R.posVel       = device.createBuffer({ size: MAXN * 16, usage: st | cd });
+  R.posVelSorted = device.createBuffer({ size: MAXN * 16, usage: st });
+  R.kind         = device.createBuffer({ size: MAXN * 4,  usage: st | cd });
+  R.kindSorted   = device.createBuffer({ size: MAXN * 4,  usage: st });
+  R.counts       = device.createBuffer({ size: MAXCELLS * 4, usage: st });
+  R.cellStart    = device.createBuffer({ size: (MAXCELLS + 1) * 4, usage: st });
+  R.cursor       = device.createBuffer({ size: MAXCELLS * 4, usage: st });
+  R.mat          = device.createBuffer({ size: MAXT * MAXT * 4, usage: st | cd });
+  R.params       = device.createBuffer({ size: 96, usage: un | cd });
+  R.cam          = device.createBuffer({ size: 32, usage: un | cd });
+  R.palette      = device.createBuffer({ size: MAXT * 16, usage: st | cd });
+  R.uDown = device.createBuffer({ size: 32, usage: un | cd });
+  R.uBlurH = device.createBuffer({ size: 32, usage: un | cd });
+  R.uBlurV = device.createBuffer({ size: 32, usage: un | cd });
+  R.uComp = device.createBuffer({ size: 32, usage: un | cd });
+
+  // explicit layouts: the five compute passes share a single bind group
+  const cs = GPUShaderStage.COMPUTE;
+  const cLayout = device.createBindGroupLayout({
+    entries: [
+      { binding: 0, visibility: cs, buffer: { type: "uniform" } },
+      { binding: 1, visibility: cs, buffer: { type: "storage" } },
+      { binding: 2, visibility: cs, buffer: { type: "storage" } },
+      { binding: 3, visibility: cs, buffer: { type: "storage" } },
+      { binding: 4, visibility: cs, buffer: { type: "storage" } },
+      { binding: 5, visibility: cs, buffer: { type: "storage" } },
+      { binding: 6, visibility: cs, buffer: { type: "storage" } },
+      { binding: 7, visibility: cs, buffer: { type: "storage" } },
+      { binding: 8, visibility: cs, buffer: { type: "read-only-storage" } }
+    ]
+  });
+  const cModule = device.createShaderModule({ code: COMPUTE_WGSL });
+  const cPipeLayout = device.createPipelineLayout({ bindGroupLayouts: [cLayout] });
+  const mk = entryPoint => device.createComputePipeline({
+    layout: cPipeLayout, compute: { module: cModule, entryPoint }
+  });
+  R.pClear = mk("clearCells");
+  R.pCount = mk("countCells");
+  R.pScan  = mk("scanCells");
+  R.pScat  = mk("scatter");
+  R.pForce = mk("forces");
+
+  R.bgCompute = device.createBindGroup({
+    layout: cLayout,
+    entries: [
+      { binding: 0, resource: { buffer: R.params } },
+      { binding: 1, resource: { buffer: R.posVel } },
+      { binding: 2, resource: { buffer: R.posVelSorted } },
+      { binding: 3, resource: { buffer: R.kind } },
+      { binding: 4, resource: { buffer: R.kindSorted } },
+      { binding: 5, resource: { buffer: R.counts } },
+      { binding: 6, resource: { buffer: R.cellStart } },
+      { binding: 7, resource: { buffer: R.cursor } },
+      { binding: 8, resource: { buffer: R.mat } }
+    ]
+  });
+
+  // particle pipeline
+  const vsStage = GPUShaderStage.VERTEX;
+  const pLayout = device.createBindGroupLayout({
+    entries: [
+      { binding: 0, visibility: vsStage, buffer: { type: "uniform" } },
+      { binding: 1, visibility: vsStage, buffer: { type: "read-only-storage" } },
+      { binding: 2, visibility: vsStage, buffer: { type: "read-only-storage" } },
+      { binding: 3, visibility: vsStage, buffer: { type: "read-only-storage" } }
+    ]
+  });
+  const pModule = device.createShaderModule({ code: PARTICLE_WGSL });
+  const blendPremul = {
+    color: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
+    alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" }
+  };
+  const blendAdd = {
+    color: { srcFactor: "one", dstFactor: "one", operation: "add" },
+    alpha: { srcFactor: "one", dstFactor: "one", operation: "add" }
+  };
+  const mkParticle = blend => device.createRenderPipeline({
+    layout: device.createPipelineLayout({ bindGroupLayouts: [pLayout] }),
+    vertex: { module: pModule, entryPoint: "vsParticle" },
+    fragment: { module: pModule, entryPoint: "fsParticle", targets: [{ format: HDR, blend }] },
+    primitive: { topology: "triangle-strip" }
+  });
+  R.pDrawAlpha = mkParticle(blendPremul);
+  R.pDrawAdd = mkParticle(blendAdd);
+
+  R.bgCam = device.createBindGroup({
+    layout: pLayout,
+    entries: [
+      { binding: 0, resource: { buffer: R.cam } },
+      { binding: 1, resource: { buffer: R.posVel } },
+      { binding: 2, resource: { buffer: R.kind } },
+      { binding: 3, resource: { buffer: R.palette } }
+    ]
+  });
+
+  // trail fade: multiplies the target by the blend constant
+  R.pFade = device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module: pModule, entryPoint: "vsFade" },
+    fragment: {
+      module: pModule, entryPoint: "fsFade",
+      targets: [{
+        format: HDR,
+        blend: {
+          color: { srcFactor: "zero", dstFactor: "constant", operation: "add" },
+          alpha: { srcFactor: "zero", dstFactor: "constant", operation: "add" }
+        }
+      }]
+    },
+    primitive: { topology: "triangle-list" }
+  });
+
+  // fullscreen passes
+  const fs = GPUShaderStage.FRAGMENT;
+  R.postLayout = device.createBindGroupLayout({
+    entries: [
+      { binding: 0, visibility: fs, buffer: { type: "uniform" } },
+      { binding: 1, visibility: fs, sampler: { type: "filtering" } },
+      { binding: 2, visibility: fs, texture: { sampleType: "float" } },
+      { binding: 3, visibility: fs, texture: { sampleType: "float" } }
+    ]
+  });
+  const postModule = device.createShaderModule({ code: POST_WGSL });
+  const mkPost = (entryPoint, format) => device.createRenderPipeline({
+    layout: device.createPipelineLayout({ bindGroupLayouts: [R.postLayout] }),
+    vertex: { module: postModule, entryPoint: "vsFull" },
+    fragment: { module: postModule, entryPoint, targets: [{ format }] },
+    primitive: { topology: "triangle-list" }
+  });
+  R.pDown = mkPost("fsDown", HDR);
+  R.pBlur = mkPost("fsBlur", HDR);
+  R.pComp = mkPost("fsComposite", fmt);
+
+  R.sampler = device.createSampler({
+    magFilter: "linear", minFilter: "linear",
+    addressModeU: "clamp-to-edge", addressModeV: "clamp-to-edge"
+  });
+
+  document.getElementById("dev").textContent = adapter.info?.vendor || "WebGPU";
+}
+
+/* ---------- size-dependent textures ---------- */
+function makeTargets() {
+  const use = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING;
+  R.scene?.destroy(); R.bloomA?.destroy(); R.bloomB?.destroy();
+  const bw = Math.max(1, W >> 2), bh = Math.max(1, H >> 2);
+  R.scene  = device.createTexture({ size: [W, H], format: HDR, usage: use });
+  R.bloomA = device.createTexture({ size: [bw, bh], format: HDR, usage: use });
+  R.bloomB = device.createTexture({ size: [bw, bh], format: HDR, usage: use });
+  R.sceneV = R.scene.createView();
+  R.bloomAV = R.bloomA.createView();
+  R.bloomBV = R.bloomB.createView();
+
+  const bg = (buf, a, b) => device.createBindGroup({
+    layout: R.postLayout,
+    entries: [
+      { binding: 0, resource: { buffer: buf } },
+      { binding: 1, resource: R.sampler },
+      { binding: 2, resource: a },
+      { binding: 3, resource: b }
+    ]
+  });
+  R.bgDown  = bg(R.uDown,  R.sceneV,  R.sceneV);
+  R.bgBlurH = bg(R.uBlurH, R.bloomAV, R.bloomAV);
+  R.bgBlurV = bg(R.uBlurV, R.bloomBV, R.bloomBV);
+  R.bgComp  = bg(R.uComp,  R.sceneV,  R.bloomAV);
+
+  const f = new Float32Array(8);
+  f[0] = 1 / W; f[1] = 1 / H;               // texel of the scene
+  device.queue.writeBuffer(R.uDown, 0, f);
+  f[0] = 1 / bw; f[1] = 1 / bh; f[2] = 1; f[3] = 0;
+  device.queue.writeBuffer(R.uBlurH, 0, f);
+  f[2] = 0; f[3] = 1;
+  device.queue.writeBuffer(R.uBlurV, 0, f);
+}
+
+/* ---------- resizing ---------- */
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const r = cv.getBoundingClientRect();
+  const nw = Math.max(1, Math.round(r.width * dpr));
+  const nh = Math.max(1, Math.round(r.height * dpr));
+  if (nw === W && nh === H) return;
+  W = nw; H = nh;
+  cv.width = W; cv.height = H;
+  worldH = H / W;
+  clampCam();
+  if (device) makeTargets();
+}
+
+function clampCam() {
+  if (cam.z < 1) cam.z = 1; else if (cam.z > 40) cam.z = 40;
+  if (P.wrap) {
+    cam.x -= Math.floor(cam.x);
+    cam.y -= Math.floor(cam.y / worldH) * worldH;
+  } else {
+    const hw = 0.5 / cam.z, hh = worldH * 0.5 / cam.z;
+    cam.x = Math.min(1 - hw, Math.max(hw, cam.x));
+    cam.y = Math.min(worldH - hh, Math.max(hh, cam.y));
+  }
+}
+
+/* ---------- population ---------- */
+let seedPos = null, seedKind = null;
+function spawn() {
+  if (!device) return;
+  if (!seedPos) { seedPos = new Float32Array(MAXN * 4); seedKind = new Uint32Array(MAXN); }
+  for (let i = 0; i < MAXN; i++) {
+    seedPos[i * 4] = Math.random();
+    seedPos[i * 4 + 1] = Math.random() * worldH;
+    seedPos[i * 4 + 2] = 0;
+    seedPos[i * 4 + 3] = 0;
+    seedKind[i] = (Math.random() * P.types) | 0;
+  }
+  device.queue.writeBuffer(R.posVel, 0, seedPos);
+  device.queue.writeBuffer(R.kind, 0, seedKind);
+}
+
+function uploadPalette() {
+  const f = new Float32Array(MAXT * 4);
+  for (let i = 0; i < P.types; i++) {
+    f[i * 4] = rgb[i][0]; f[i * 4 + 1] = rgb[i][1]; f[i * 4 + 2] = rgb[i][2]; f[i * 4 + 3] = 1;
+  }
+  device.queue.writeBuffer(R.palette, 0, f);
+}
+
+/* ---------- parameters uploaded every frame ---------- */
+const parAB = new ArrayBuffer(96);
+const pf = new Float32Array(parAB), pu = new Uint32Array(parAB);
+const camAB = new Float32Array(8);
+const compAB = new Float32Array(8);
+let grid = { cols: 1, rows: 1, total: 1 };
+
+function updateGrid() {
+  let cs = P.rMax;
+  let cols = Math.max(1, Math.floor(1 / cs));
+  let rows = Math.max(1, Math.floor(worldH / cs));
+  while (cols * rows > MAXCELLS) {         // guard rail: larger cells
+    cs *= 1.25;
+    cols = Math.max(1, Math.floor(1 / cs));
+    rows = Math.max(1, Math.floor(worldH / cs));
+  }
+  grid.cols = cols; grid.rows = rows; grid.total = cols * rows;
+}
+
+function writeParams(dt) {
+  updateGrid();
+  const damp = Math.pow(0.5, dt / P.friction);
+  pf[0] = P.rMax * P.rMax;
+  pf[1] = 1 / P.rMax;
+  pf[2] = P.beta;
+  pf[3] = 1 / P.beta;
+  pf[4] = 1 / (1 - P.beta);
+  pf[5] = P.rMax * P.force;
+  pf[6] = dt;
+  pf[7] = damp;
+  pf[8] = 1 / grid.cols;
+  pf[9] = worldH / grid.rows;
+  pf[10] = worldH;
+  pf[11] = mouse.x;
+  pf[12] = mouse.y;
+  pf[13] = 0.3 / cam.z;
+  pf[14] = mouse.down === 1 ? 6 : (mouse.down === 2 ? -6 : 0);
+  pu[16] = P.count;
+  pu[17] = grid.cols;
+  pu[18] = grid.rows;
+  pu[19] = grid.total;
+  pu[20] = P.wrap ? 1 : 0;
+  device.queue.writeBuffer(R.params, 0, parAB);
+}
+
+function writeCam() {
+  camAB[0] = cam.x; camAB[1] = cam.y; camAB[2] = cam.z; camAB[3] = worldH;
+  camAB[4] = 2 * P.size * dpr / W;
+  camAB[5] = 2 * P.size * dpr / H;
+  camAB[6] = P.wrap ? 1 : 0;
+  camAB[7] = 1;
+  device.queue.writeBuffer(R.cam, 0, camAB);
+}
+
+/* ---------- main loop ---------- */
+let last = performance.now(), acc = 0, frames = 0, shot = false;
+const fpsEl = document.getElementById("fps");
+const nbEl = document.getElementById("nb");
+const zoomEl = document.getElementById("zoom");
+const percEl = document.getElementById("perc");
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  resize();
+  const el = now - last; last = now;
+  acc += el; frames++;
+  if (acc > 500) {
+    fpsEl.textContent = Math.round(frames * 1000 / acc);
+    acc = 0; frames = 0;
+    percEl.textContent = Math.round(P.count / Math.max(1, grid.total));
+  }
+
+  if (matDirty) { device.queue.writeBuffer(R.mat, 0, matrix); matDirty = false; }
+  writeCam();
+  compAB[4] = P.bloom; compAB[5] = P.expo;
+  device.queue.writeBuffer(R.uComp, 0, compAB);
+
+  const enc = device.createCommandEncoder();
+
+  if (!paused) {
+    writeParams(P.dt / P.sub);
+    for (let s = 0; s < P.sub; s++) {
+      const cp = enc.beginComputePass();
+      cp.setBindGroup(0, R.bgCompute);
+      cp.setPipeline(R.pClear); cp.dispatchWorkgroups(Math.ceil(grid.total / 64));
+      cp.setPipeline(R.pCount); cp.dispatchWorkgroups(Math.ceil(P.count / 64));
+      cp.setPipeline(R.pScan);  cp.dispatchWorkgroups(1);
+      cp.setPipeline(R.pScat);  cp.dispatchWorkgroups(Math.ceil(P.count / 64));
+      cp.setPipeline(R.pForce); cp.dispatchWorkgroups(Math.ceil(P.count / 64));
+      cp.end();
+    }
+  }
+
+  // HDR scene
+  const fade = P.trail > 0;
+  const rp = enc.beginRenderPass({
+    colorAttachments: [{
+      view: R.sceneV,
+      loadOp: fade ? "load" : "clear",
+      storeOp: "store",
+      clearValue: { r: 0, g: 0, b: 0, a: 1 }
+    }]
+  });
+  if (fade) {
+    rp.setPipeline(R.pFade);
+    rp.setBlendConstant({ r: P.trail, g: P.trail, b: P.trail, a: P.trail });
+    rp.draw(3);
+  }
+  rp.setPipeline(P.glow ? R.pDrawAdd : R.pDrawAlpha);
+  rp.setBindGroup(0, R.bgCam);
+  rp.draw(4, P.count);
+  rp.end();
+
+  // glow chain
+  if (P.bloom > 0.01) {
+    const pass = (pipe, bg, view) => {
+      const p = enc.beginRenderPass({
+        colorAttachments: [{ view, loadOp: "clear", storeOp: "store",
+                             clearValue: { r: 0, g: 0, b: 0, a: 1 } }]
+      });
+      p.setPipeline(pipe); p.setBindGroup(0, bg); p.draw(3); p.end();
+    };
+    pass(R.pDown, R.bgDown, R.bloomAV);
+    pass(R.pBlur, R.bgBlurH, R.bloomBV);
+    pass(R.pBlur, R.bgBlurV, R.bloomAV);
+  }
+
+  // composite to the screen
+  const fp = enc.beginRenderPass({
+    colorAttachments: [{
+      view: ctx.getCurrentTexture().createView(),
+      loadOp: "clear", storeOp: "store",
+      clearValue: { r: 0, g: 0, b: 0, a: 1 }
+    }]
+  });
+  fp.setPipeline(R.pComp); fp.setBindGroup(0, R.bgComp); fp.draw(3); fp.end();
+
+  device.queue.submit([enc.finish()]);
+
+  if (shot) {
+    shot = false;
+    cv.toBlob(b => {
+      if (!b) return;
+      const a = document.createElement("a");
+      a.download = "particle-life.png";
+      a.href = URL.createObjectURL(b);
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    });
+  }
+}
+
+/* ---------- user interface ---------- */
+function bind(id, key, fmtFn, after) {
+  const s = document.getElementById("s-" + id);
+  const o = document.getElementById("o-" + id);
+  const apply = () => {
+    P[key] = parseFloat(s.value);
+    o.textContent = fmtFn(P[key]);
+    if (after) after();
+  };
+  s.addEventListener("input", apply);
+  apply();
+}
+
+bind("rmax", "rMax", v => v.toFixed(3));
+bind("force", "force", v => String(v));
+bind("beta", "beta", v => v.toFixed(2));
+bind("fric", "friction", v => v.toFixed(3));
+bind("dt", "dt", v => v.toFixed(3));
+bind("sub", "sub", v => String(Math.round(v)), () => { P.sub = Math.round(P.sub); });
+bind("size", "size", v => v.toFixed(1));
+bind("trail", "trail", v => v.toFixed(2));
+bind("bloom", "bloom", v => v.toFixed(2));
+bind("expo", "expo", v => v.toFixed(2));
+bind("count", "count", v => String(Math.round(v)), () => {
+  P.count = Math.round(P.count);
+  nbEl.textContent = P.count;
+});
+bind("types", "types", v => String(Math.round(v)), () => {
+  P.types = Math.round(P.types);
+  palette(P.types);
+  drawMatrix();
+  if (device) { uploadPalette(); spawn(); }
+});
+
+document.getElementById("c-wrap").addEventListener("change", e => { P.wrap = e.target.checked; clampCam(); });
+document.getElementById("c-glow").addEventListener("change", e => P.glow = e.target.checked);
+document.querySelectorAll("[data-preset]").forEach(b =>
+  b.addEventListener("click", () => setMatrix(b.dataset.preset)));
+
+const pauseBtn = document.getElementById("b-pause");
+pauseBtn.addEventListener("click", () => {
+  paused = !paused;
+  pauseBtn.textContent = paused ? "Resume" : "Pause";
+  pauseBtn.classList.toggle("on", paused);
+});
+document.getElementById("b-reset").addEventListener("click", spawn);
+document.getElementById("b-png").addEventListener("click", () => { shot = true; });
+
+/* ---------- setups ---------- */
+
+const SLIDERS = {
+  rmax: "rMax", force: "force", beta: "beta", fric: "friction", dt: "dt", sub: "sub",
+  size: "size", trail: "trail", bloom: "bloom", expo: "expo", count: "count", types: "types"
+};
+
+// pushes P back into the sliders: each slider min/max acts as a guard rail,
+// and the input event replays the side effects (palette, matrix, buffers).
+function syncUI() {
+  for (const id in SLIDERS) {
+    const s = document.getElementById("s-" + id);
+    if (s) { s.value = String(P[SLIDERS[id]]); s.dispatchEvent(new Event("input")); }
+  }
+  document.getElementById("c-wrap").checked = P.wrap;
+  document.getElementById("c-glow").checked = P.glow;
+}
+
+function currentSetup() {
+  const n = P.types, rows = [];
+  for (let i = 0; i < n; i++) {
+    const r = [];
+    for (let j = 0; j < n; j++) r.push(matrix[i * MAXT + j]);
+    rows.push(r);
+  }
+  return {
+    format: "particle-life",
+    version: 1,
+    saved: new Date().toISOString(),
+    engine: "webgpu",
+    params: Object.assign({}, P),
+    matrix: rows
+  };
+}
+
+function applySetup(o) {
+  if (!o || typeof o !== "object") throw new Error("Not a JSON object.");
+  const src = o.params || o.p;
+  const raw = o.matrix || o.m;
+  if (!src || !Array.isArray(raw)) throw new Error("No params and no matrix in this file.");
+
+  for (const k in P) {
+    const v = src[k];
+    if (typeof v === "number" && isFinite(v)) P[k] = v;
+    else if (typeof v === "boolean") P[k] = v;
+  }
+
+  const flat = Array.isArray(raw[0]) ? raw.flat() : raw;
+  let n = Math.round(P.types);
+  if (!(n >= 2)) n = Array.isArray(raw[0]) ? raw.length : Math.round(Math.sqrt(flat.length));
+  P.types = Math.max(2, Math.min(MAXT, n));
+
+  matrix.fill(0);
+  for (let i = 0; i < P.types; i++) {
+    for (let j = 0; j < P.types; j++) {
+      const v = flat[i * P.types + j];
+      matrix[i * MAXT + j] = (typeof v === "number" && isFinite(v))
+        ? Math.max(-1, Math.min(1, v)) : 0;
+    }
+  }
+
+  palette(P.types);
+  syncUI();
+  drawMatrix();
+  matDirty = true;
+  clampCam();
+  if (device) uploadPalette();
+}
+
+function flash(btn, msg) {
+  if (!btn.dataset.label) btn.dataset.label = btn.textContent;
+  btn.textContent = msg;
+  clearTimeout(btn._t);
+  btn._t = setTimeout(() => { btn.textContent = btn.dataset.label; }, 1800);
+}
+
+const loadBtn = document.getElementById("b-load");
+const fileIn = document.getElementById("f-load");
+
+document.getElementById("b-save").addEventListener("click", e => {
+  const blob = new Blob([JSON.stringify(currentSetup(), null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.download = "particle-life-" + new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-") + ".json";
+  a.href = URL.createObjectURL(blob);
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  flash(e.target, "Saved");
+});
+
+async function loadFile(f) {
+  try {
+    if (f.size > 1e6) throw new Error("File is too large.");
+    applySetup(JSON.parse(await f.text()));
+    flash(loadBtn, "Setup loaded");
+  } catch (err) {
+    flash(loadBtn, "Invalid file");
+    console.warn("Setup load failed:", err);
+  }
+}
+
+loadBtn.addEventListener("click", () => fileIn.click());
+fileIn.addEventListener("change", async e => {
+  const f = e.target.files[0];
+  if (f) await loadFile(f);
+  e.target.value = "";
+});
+
+// drop a file straight onto the view
+const stage = document.getElementById("stage");
+stage.addEventListener("dragover", e => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
+stage.addEventListener("drop", e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (f) loadFile(f);
+});
+
+document.getElementById("b-link").addEventListener("click", async e => {
+  const m = [];
+  for (let i = 0; i < P.types; i++)
+    for (let j = 0; j < P.types; j++) m.push(matrix[i * MAXT + j]);
+  const url = location.origin + location.pathname + "#" + btoa(JSON.stringify({ p: P, m }));
+  try { await navigator.clipboard.writeText(url); flash(e.target, "Link copied"); }
+  catch { prompt("Preset link:", url); }
+});
+
+function loadHash() {
+  if (!location.hash.length) return false;
+  try {
+    applySetup(JSON.parse(atob(location.hash.slice(1))));
+    return true;
+  } catch { return false; }
+}
+
+const panel = document.getElementById("panel");
+const toggle = document.getElementById("toggle");
+toggle.addEventListener("click", () => {
+  panel.classList.toggle("hidden");
+  toggle.textContent = panel.classList.contains("hidden") ? "Controls" : "Hide controls";
+});
+
+/* ---------- mouse ---------- */
+let pan = null, panId = null;
+function screenPx(e) {
+  const r = cv.getBoundingClientRect();
+  return { px: (e.clientX - r.left) * W / r.width, py: (e.clientY - r.top) * H / r.height };
+}
+function toWorld(e) {
+  const { px, py } = screenPx(e);
+  const s = W * cam.z;
+  let x = (px - W * 0.5) / s + cam.x;
+  let y = (py - H * 0.5) / s + cam.y;
+  if (P.wrap) { x -= Math.floor(x); y -= Math.floor(y / worldH) * worldH; }
+  mouse.x = x; mouse.y = y;
+}
+
+cv.addEventListener("wheel", e => {
+  e.preventDefault();
+  const { px, py } = screenPx(e);
+  const s0 = W * cam.z;
+  const wx = (px - W * 0.5) / s0 + cam.x;
+  const wy = (py - H * 0.5) / s0 + cam.y;
+  const unit = e.deltaMode === 1 ? 18 : (e.deltaMode === 2 ? 400 : 1);
+  cam.z *= Math.exp(-e.deltaY * unit * 0.0016);
+  clampCam();
+  const s1 = W * cam.z;
+  cam.x = wx - (px - W * 0.5) / s1;
+  cam.y = wy - (py - H * 0.5) / s1;
+  clampCam();
+  zoomEl.textContent = cam.z.toFixed(1);
+}, { passive: false });
+
+cv.addEventListener("pointerdown", e => {
+  if (e.button === 1 || e.shiftKey) {
+    pan = screenPx(e); panId = e.pointerId;
+    cv.style.cursor = "grabbing";
+    return;
+  }
+  cv.setPointerCapture(e.pointerId);
+  toWorld(e);
+  mouse.down = e.button === 2 ? 2 : 1;
+});
+cv.addEventListener("mousedown", e => { if (e.button === 1) e.preventDefault(); });
+cv.addEventListener("auxclick", e => e.preventDefault());
+addEventListener("pointermove", e => {
+  if (pan && e.pointerId === panId) {
+    const p = screenPx(e);
+    const s = W * cam.z;
+    cam.x -= (p.px - pan.px) / s;
+    cam.y -= (p.py - pan.py) / s;
+    clampCam();
+    pan = p;
+    return;
+  }
+  if (mouse.down && e.target === cv) toWorld(e);
+});
+function endPointer() { mouse.down = 0; pan = null; panId = null; cv.style.cursor = "crosshair"; }
+addEventListener("pointerup", endPointer);
+addEventListener("pointercancel", endPointer);
+addEventListener("blur", endPointer);
+cv.addEventListener("contextmenu", e => e.preventDefault());
+cv.addEventListener("dblclick", resetView);
+
+function resetView() {
+  cam.z = 1; cam.x = 0.5; cam.y = worldH * 0.5;
+  clampCam();
+  zoomEl.textContent = cam.z.toFixed(1);
+}
+
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  const k = e.key.toLowerCase();
+  if (k === " ") { e.preventDefault(); pauseBtn.click(); }
+  else if (k === "r") spawn();
+  else if (k === "m") setMatrix("random");
+  else if (k === "0") resetView();
+  else if (k === "h") toggle.click();
+});
+
+/* ---------- startup ---------- */
+function showFail(msg) {
+  document.getElementById("failmsg").textContent = msg;
+  document.getElementById("fail").style.display = "flex";
+  document.getElementById("dev").textContent = "unavailable";
+  cv.style.display = "none";
+}
+
+(async function start() {
+  if (!loadHash()) setMatrix("random");
+  drawMatrix();
+  try {
+    await initGPU();
+  } catch (err) {
+    showFail(err.message || String(err));
+    return;
+  }
+  resize();
+  makeTargets();
+  uploadPalette();
+  spawn();
+  nbEl.textContent = P.count;
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
